@@ -2,16 +2,16 @@
     <img src="https://github.com/odellus/crow/raw/v0.1.0/assets/crow-logo-crop.png" description="crow logo"width=500/>
 </p>
 
-# mcp-testing
+# `nid`
 
 ![mcp-framework](./docs/img/whiteboard_capture.png)
 
-Whiteboard capture of the idea behind mcp-testing
+Whiteboard capture of the idea behind `nid`, which is a meaningless term
 
 
 Basically the idea is that we can use FastMCP as our tool calling framework in the exact same way we are going to use Agent Client Protocol to communicate with the frontend.
 
-And with this framework-less agent framework where we're just trying to connect people's [FastMCP](https://github.com/jlowin/fastmcp) and [Agent Client Protocol](https://github.com/agentclientprotocol/python-sdk) and otherwise let them do it theirselves, a very simple example of how to use FastMCP and OpenAI python sdk to create a asynchronous streaming react agent in 209 lines of code seems like a great way to get started.
+And with this framework-less agent framework where we're just trying to connect people's [FastMCP](https://github.com/jlowin/fastmcp) and [Agent Client Protocol](https://github.com/agentclientprotocol/python-sdk) agents and largely get the hell out of the way, being able to demonstrate a proof of concept in around 200 lines of code is pretty powerful.
 
 [`streaming_async_react.py`](./streaming_async_react.py)
 ```python
@@ -226,7 +226,14 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
+and we've also added a persistent database to store the conversation. Now we really just need to wrap the emitted token to status_updates for ACP and we're in business.  I would build more on our existing work with [`crow`](https://github.com/odellus/crow), but we've basically got to reimplement the entire thing from scratch now lol. That's what getting rid of openhands means.
+
+
+
 # TO DO
 - session management and persistence to sqlite through sqlalchemy
 - compaction
-- prompt management
+- prompt management — proper, with version and input variables all stored in memory every time a new prompt is created or rendered (we refer back to versioned prompt, which is crucial for evaluation)
+- skills — part of prompt management, we need to do a keyword check for skills and insert the necessary progressive disclosure around the skill into the context after the user's request.
+- agent client protocol and we mean the whole thing
+- CLI is going to be in crow we've already got that sorted out this is just going to drop down where openhands and the acp used to be because instead of having an openhands sdk and then a whole big acp we'll just be able to use `nid`'s built in ACP because that's the thing about it being a frameworkless framework of minimal non-extensions built between two protocols that's basically the ACP and openai chat completion sdk's minimal spanning set right?
