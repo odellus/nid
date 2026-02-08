@@ -12,3 +12,6 @@ wheels/
 
 # keys
 .env
+
+# test database
+*.db
