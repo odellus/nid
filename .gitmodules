@@ -1,0 +1,3 @@
+[submodule "deps/python-sdk"]
+	path = deps/python-sdk
+	url = https://github.com/agentclientprotocol/python-sdk
