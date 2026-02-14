@@ -311,8 +311,10 @@ async def main() -> None:
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-    logger.info("Starting Crow ACP Agent")
-    await run_agent(CrowACPAgent())
+    logger.info("Starting NID ACP Agent (merged)")
+    # Use the new merged NidAgent
+    from nid.agent import NidAgent
+    await run_agent(NidAgent())
 
 
 if __name__ == "__main__":

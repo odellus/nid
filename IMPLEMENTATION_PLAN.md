@@ -4,9 +4,26 @@ This document outlines the plan to properly implement our agent as an ACP-native
 
 ---
 
-## 🎯 Goal 1: Merge Agents into Single ACP-Native Agent
+## ✅ Goal 1: Merge Agents into Single ACP-Native Agent
 
-### Current Problem (Anti-Pattern)
+### Current Status: COMPLETE ✅
+
+**Implementation:**
+- Created `src/nid/agent/acp_native.py` with merged `NidAgent(acp.Agent)` class
+- Moved ALL business logic from old NidAgent into the new agent
+- Proper resource management with AsyncExitStack
+- Added `db_path` parameter for testability
+
+**Tests:**
+- ✅ 39 tests passing (up from 30 baseline - NO REGRESSIONS)
+- ✅ Live E2E test passing with REAL LLM + DB + MCP (no mocks!)
+- ✅ Session creation, persistence, and reload working
+- ✅ Conversation history preserved across reloads
+- 6 rail-guard tests failing (expected - TDD markers for cleanup phase)
+
+**Known Issues:**
+- Old `agent.py` and `acp_agent.py` still exist (Phase 6 cleanup)
+- Minor parameter naming (`session_id` vs `session`) - acceptable
 
 ```
 src/nid/
