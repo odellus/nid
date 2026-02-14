@@ -1,88 +1,150 @@
-# Crow Architecture Overview
+# NID Agent Architecture Overview
 
 ## Vision
 
-Crow is a lightweight, extensible AI coding agent built around two core protocols:
-
-- **Model Context Protocol (MCP)** for tools and extensions
-- **Agent Client Protocol (ACP)** for editor/client integration
-
-Unlike monolithic frameworks, Crow is thin but powerful - it connects protocols rather than reimplementing them.
+NID Agent is an ACP-native, MCP-first AI coding agent. We don't build frameworks - we connect protocols.
 
 ## Core Philosophy
 
 ```
-Don't build frameworks. Build connective tissue.
+Frameworkless Framework: We don't build agent frameworks. We connect protocols.
 
-The protocols (MCP, ACP) handle the hard parts.
-Crow just orchestrates them elegantly.
+The protocols (ACP, MCP, Agentskills) handle the hard parts.
+NID Agent just orchestrates them elegantly.
 ```
 
-### Design Principles
+**What we are:**
+- ACP-first agent implementation (single agent class, no wrappers)
+- MCP-first tool calling (via FastMCP, no custom tool framework)
+- Minimal, purpose-specific code
+- Protocol compliance over framework features
 
-1. **Everything is an Extension** (VSCode pattern)
-   - Tools come from MCP servers
-   - Editing interfaces from ACP clients
-   - Skills load dynamically
+**What we are NOT:**
+- Another agent SDK (not like kimi-cli, software-agent-sdk, openhands.sdk)
+- A tool calling framework (FastMCP has this covered)
+- A type system for agents (use ACP schema)
+- A state management framework (use ACP session/load)
 
-2. **Streaming-First** (non-negotiable for local models)
-   - Local models take 15+ minutes to respond
-   - Streaming keeps connection alive during generation
-   - Time to first token, not time to response
+## The 6 Core Components
 
-3. **No Permissions** (human-out-of-the-loop)
-   - Automated verification instead
-   - Trust through transparency, not prompts
+### 1. ACP-First Agent
+**Status**: In progress (merging agents into single ACP-native implementation)
 
-4. **Skills First** (learn and adapt)
-   - Persistent skill repository
-   - Skills from OpenHands, not too proud to borrow
-   - Auto-discovery and loading
+Single `NidAgent(acp.Agent)` class:
+- Business logic lives IN the agent
+- No wrapper, no separate framework
+- ACP protocol compliance IS the architecture
+- Implements session/load from ACP spec
 
-5. **Minimal CLI** (let clients handle UI)
-   - Start ACP server
-   - Simple message sending
-   - Use Toad, VSCode extensions, JetBrains for interactivity
+**Reference**: `deps/python-sdk/schema/schema.json`
+
+### 2. MCP-First Frameworkless Framework
+**Status**: ✅ Complete (via FastMCP)
+
+All agent frameworks are just sophisticated tool calling frameworks. FastMCP already solves this:
+- Tool definitions and execution via MCP
+- No custom tool calling layer
+- MCP is the standard, we just consume it
+- Framework-free: MCP + react loop = agent
+
+**Implementation**: `src/nid/mcp/search.py`, `src/nid/agent/mcp.py`
+
+### 3. Persistence (ACP session/load)
+**Status**: ✅ Complete
+
+Our persistence layer implements ACP's session/load specification:
+- **Prompts**: Versioned system prompt templates
+- **Sessions**: The "DNA" of the agent (KV cache anchor)
+- **Events**: The "wide" transcript (all conversation turns)
+
+**This isn't just "persistence"** - it's ACP session management implemented correctly.
+
+**Implementation**: `src/nid/agent/session.py`, `src/nid/agent/db.py`
+
+### 4. SKILLS (CRITICAL - NOT YET IMPLEMENTED)
+**Status**: ❌ NOT BEGUN
+
+Skills are the project's extension mechanism:
+- Specification: `https://agentskills.io/llms.txt`
+- Skills allow agents to have specialized capabilities
+- Separate protocol from ACP/MCP
+- Mondo critical feature
+
+**Action Required**: Read spec, design implementation, TDD
+
+### 5. Prompt Management
+**Status**: ✅ Partially Complete
+
+System prompt versioning and rendering:
+- Templates stored in database
+- Jinja2 rendering with arguments
+- Lookup-or-create pattern
+- Deterministic session IDs for KV cache reuse
+
+**Implementation**: `src/nid/agent/prompt.py`, `src/nid/agent/prompts/`
+
+### 6. Compaction
+**Status**: ❌ NOT YET IMPLEMENTED
+
+Conversation compaction to manage token limits:
+
+**The Algorithm**:
+```
+Post-request hook:
+1. Check total tokens (input + output of request + response)
+2. If > threshold:
+   - Keep first K turns
+   - Keep last K turns  
+   - Replace middle M-2K turns with summary
+3. Summary prompt:
+   "Calling no tools, please accurately summarize the part of 
+   the conversation between {K-th message} and {M-K-th message} 
+   such that the conversation is greatly compacted in length 
+   without losing the crucial context, especially files changed. 
+   Use file paths as pointers to use the filesystem as persistent 
+   state. Do this often!"
+```
+
+**Why This Matters**:
+- Prevents token limit errors
+- Maintains crucial context (especially file changes)
+- Filesystem becomes persistent state
+- Enables long-running sessions
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    ACP Clients (UI Layer)                   │
-│  - Toad TUI (terminal)                                    │
+│  - Toad TUI (terminal)                                      │
 │  - VSCode extensions                                        │
-│  - JetBrains AI Assistant                                     │
-│  - Custom clients                                           │
+│  - Zed editor                                              │
+│  - Custom clients via ACP protocol                          │
 └──────────────────────┬──────────────────────────────────────┘
-                       │ ACP (REST/JSON-RPC)
+                       │ ACP Protocol (stdio/JSON-RPC)
                        │
          ┌─────────────┴─────────────┐
-         │       Crow ACP Layer       │ ← Protocol adaptor
+         │    NidAgent(acp.Agent)    │ ← Single ACP-native agent
+         │  - Business logic IN agent│
+         │  - AsyncExitStack         │
+         │  - Session management     │
+         │  - React loop             │
          └─────────────┬─────────────┘
                        │
          ┌─────────────┴─────────────┐
-         │      Core Agent            │ ← ReAct loop + orchestration
-         │  - Session persistence     │
-         │  - Compaction             │
-         │  - Loop detection         │
-         │  - Streaming              │
-         │  - Finish workflow        │
+         │   Tool Execution (MCP)    │ ← Frameworkless tool calling
+         │  - FastMCP client         │
+         │  - Python REPL (MCP)      │
+         │  - Search (MCP)           │
+         │  - File ops (MCP)         │
          └─────────────┬─────────────┘
                        │
          ┌─────────────┴─────────────┐
-         │    Tool Execution Layer     │ ← MCP clients
-         │  - Python REPL (MCP)       │
-         │  - Search (MCP)            │
-         │  - File ops (MCP)          │
-         │  - Custom tools (MCP)      │
-         └─────────────┬─────────────┘
-                       │
-         ┌─────────────┴─────────────┐
-         │   External Resources       │
-         │  - Qdrant (vector store)   │
-         │  - SearXNG (search)       │
-         │  - SQLite (persistence)    │
-         │  - Local/Remote LLMs       │
+         │   Persistence (ACP impl)  │ ← Implements ACP session/load
+         │  - SQLite (sessions)      │
+         │  - SQLAlchemy models      │
+         │  - Prompt templates       │
+         │  - Event history          │
          └────────────────────────────┘
 ```
 
