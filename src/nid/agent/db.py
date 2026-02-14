@@ -2,8 +2,9 @@
 Database schema for MCP Testing - Local LLM first persistence layer.
 
 This module defines SQLAlchemy models for:
-1. SESSIONS table - The "DNA" of the agent (KV cache anchor)
-2. EVENTS table - The "Wide" transcript (all conversation turns)
+1. PROMPTS table - Versioned system prompt templates
+2. SESSIONS table - The "DNA" of the agent (KV cache anchor)
+3. EVENTS table - The "Wide" transcript (all conversation turns)
 """
 
 from datetime import datetime
@@ -23,6 +24,25 @@ from sqlalchemy.orm import declarative_base, relationship
 Base = declarative_base()
 
 
+class Prompt(Base):
+    """System prompt templates - versioned, reusable"""
+
+    __tablename__ = "prompts"
+
+    id = Column(
+        Text, primary_key=True, doc="Unique prompt ID (e.g., 'crow-v1', 'crow-minimal')"
+    )
+    name = Column(Text, nullable=False, doc="Display name")
+    template = Column(Text, nullable=False, doc="Jinja2 template content")
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    # Relationship to sessions
+    sessions = relationship("Session", back_populates="prompt")
+
+    def __repr__(self) -> str:
+        return f"<Prompt(id='{self.id}', name='{self.name}')>"
+
+
 class Session(Base):
     """
     The "DNA" of the agent. This table anchors your KV cache.
@@ -32,10 +52,16 @@ class Session(Base):
     __tablename__ = "sessions"
 
     session_id = Column(
-        Text, primary_key=True, doc="Unique hash of system_prompt + tools"
+        Text, primary_key=True, doc="Unique hash of prompt_id + prompt_args + tools"
+    )
+    prompt_id = Column(
+        Text, ForeignKey("prompts.id"), nullable=True, doc="Reference to prompt template"
+    )
+    prompt_args = Column(
+        JSON, nullable=True, doc="Arguments used to render the prompt template"
     )
     system_prompt = Column(
-        Text, nullable=False, doc="The static instructions (The 'Crow' persona)"
+        Text, nullable=False, doc="The rendered system prompt (cached for reconstruction)"
     )
     tool_definitions = Column(
         JSON, nullable=False, doc="Full JSON schemas of all available MCP tools"
@@ -55,7 +81,8 @@ class Session(Base):
         doc="When this agent configuration was first used",
     )
 
-    # Relationship to events
+    # Relationships
+    prompt = relationship("Prompt", back_populates="sessions")
     events = relationship(
         "Event", back_populates="session", cascade="all, delete-orphan"
     )
@@ -133,74 +160,6 @@ def create_database(db_path: str = "sqlite:///mcp_testing.db") -> None:
     """
     engine = create_engine(db_path)
     Base.metadata.create_all(engine)
-    print(f"Database created successfully at {db_path}")
-
-
-def get_session(db_path: str = "sqlite:///mcp_testing.db"):
-    """
-    Get a new database session.
-
-    Args:
-        db_path: Database connection string
-
-    Returns:
-        SQLAlchemy session object
-    """
-    from sqlalchemy.orm import Session as SQLAlchemySession
-
-    engine = create_engine(db_path)
-    return SQLAlchemySession(engine)
-
-
-def save_event(
-    session,
-    session_id: str,
-    conv_index: int,
-    role: str,
-    content: str | None = None,
-    reasoning_content: str | None = None,
-    tool_call_id: str | None = None,
-    tool_call_name: str | None = None,
-    tool_arguments: dict | None = None,
-    prompt_tokens: int | None = None,
-    completion_tokens: int | None = None,
-    total_tokens: int | None = None,
-    event_metadata: dict | None = None,
-):
-    """
-    Save an event to the database.
-
-    Args:
-        session: SQLAlchemy session
-        session_id: ID of the session
-        conv_index: Conversation turn index
-        role: user, assistant, tool
-        content: Text content
-        reasoning_content: Internal thinking tokens
-        tool_call_id: Tool call ID
-        tool_call_name: Name of tool called
-        tool_arguments: Arguments passed to tool
-        prompt_tokens: Input token count
-        completion_tokens: Output token count
-        total_tokens: Total token count
-        event_metadata: Additional metadata as dict
-    """
-    event = Event(
-        session_id=session_id,
-        conv_index=conv_index,
-        role=role,
-        content=content,
-        reasoning_content=reasoning_content,
-        tool_call_id=tool_call_id,
-        tool_call_name=tool_call_name,
-        tool_arguments=tool_arguments,
-        prompt_tokens=prompt_tokens,
-        completion_tokens=completion_tokens,
-        total_tokens=total_tokens,
-        event_metadata=event_metadata,
-    )
-    session.add(event)
-    session.commit()
 
 
 if __name__ == "__main__":

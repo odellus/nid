@@ -1,3 +1,9 @@
 [submodule "deps/python-sdk"]
 	path = deps/python-sdk
 	url = https://github.com/agentclientprotocol/python-sdk
+[submodule "deps/software-agent-sdk"]
+	path = deps/software-agent-sdk
+	url = https://github.com/openhands/software-agent-sdk
+[submodule "deps/kimi-cli"]
+	path = deps/kimi-cli
+	url = git@github.com:MoonshotAI/kimi-cli.git

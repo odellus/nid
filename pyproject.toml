@@ -14,3 +14,9 @@ dependencies = [
     "python-dotenv>=1.2.1",
     "sqlalchemy>=2.0.46",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-asyncio>=0.23.0",
+]
