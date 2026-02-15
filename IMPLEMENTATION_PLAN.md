@@ -251,6 +251,182 @@ await agent.new_session(
 
 ---
 
+## 🎯 Goal 6: Python SDK & Plugin Contract
+
+### Status: 🟡 **PARTIAL** (40%)
+
+**What We Want**:
+A way to make it "stupidly easy" for users to extend Crow agents with Python plugins/extensions that:
+1. Can be published as separate Python packages
+2. Can be installed via pip
+3. Can be registered via entry points
+4. Have complete control over agent behavior
+
+**The Contract** (What Extensions Can Do):
+
+Extensions are Python packages that can:
+1. **Modify system prompts** - Inject context before LLM sees it
+2. **Add hooks/callbacks** - Register async functions at specific points in the agent flow
+3. **Change tools** - Add/remove tools at initialization (NOT mid-stream - KV cache!)
+4. **Access database** - Read/write session history
+5. **Trigger compaction** - Summarize conversation history
+6. **Control agent lifecycle** - Start/stop/restart agents programmatically
+7. **Orchestrate workflows** - Chain multiple agents together
+
+**Hook Points** (Where Extensions Can Inject Behavior):
+
+```
+prompt():
+    add_user_message()
+    
+    # HOOK POINT #1: PRE_REQUEST
+    # Skills go here - inject context before LLM sees it
+    # Example: "database" in prompt → inject DB schema
+    
+    for turn in react_loop():
+        response = llm.call()
+        
+        # HOOK POINT #2: MID_REACT
+        # After each LLM response
+        # Example: Check token usage, compact if over threshold
+        
+        if tools:
+            execute()
+    
+    # HOOK POINT #3: POST_REACT_LOOP
+    # After loop, before return
+    # Example: Summarize conversation
+    
+    return PromptResponse()
+
+# HOOK POINT #4: POST_REQUEST
+# After prompt() returns
+# Example: Ralph loops (re-prompt for verification)
+```
+
+**How Extensions Are Registered**:
+
+**Option 1: Direct Registration (Simplest for Testing)**
+```python
+from crow import Agent
+
+agent = Agent()
+
+# Register hooks directly
+async def my_hook(ctx):
+    if "database" in ctx.prompt:
+        ctx.inject_context(load_schema())
+
+agent.hooks.register("pre_request", my_hook)
+```
+
+**Option 2: Entry Points (For Publishable Plugins)**
+```toml
+# In my-plugin/pyproject.toml
+[project.entry-points."crow.hooks.pre_request"]
+my_skill = "my_plugin:skill_hook"
+
+[project.entry-points."crow.hooks.mid_react"]
+compaction = "my_plugin:compaction_hook"
+```
+
+**Option 3: ACP Client Registration (Runtime)**
+```python
+# Client registers hooks via ACP ext_method
+await client.ext_method(
+    "crow.hooks.register",
+    {
+        "point": "pre_request",
+        "name": "my_skill",
+        "handler": "my_module:skill_hook",
+    }
+)
+```
+
+**Hook Context** (What Hooks Receive):
+```python
+@dataclass
+class HookContext:
+    session: Session          # Full session state
+    prompt: str | None        # User prompt (for pre_request)
+    usage: dict | None        # Token usage (for mid_react)
+    response: str | None      # Final response (for post_request)
+    
+    def inject_context(self, text: str):
+        """Add context to conversation (for skills)"""
+    
+    def should_compact(self) -> bool:
+        """Check if compaction needed"""
+```
+
+**Current State**:
+- ✅ Core agent architecture complete (ACP-native)
+- ✅ MCP integration working
+- ✅ Session management working
+- ✅ Persistence working (SQLAlchemy)
+- 🟡 Hook system designed but not implemented
+- 🟡 Plugin registration via entry points not implemented
+- 🟡 Builtin hooks (skills, compaction) not migrated to hook system
+
+**What's Left**:
+1. Implement `HookRegistry` class
+2. Add hook points to `Agent.prompt()` and `_react_loop()`
+3. Migrate skills to `pre_request` hook
+4. Migrate compaction to `mid_react` hook (when implemented)
+5. Implement entry point loading for plugins
+6. Document the hook API
+7. Publish example hooks as separate packages
+
+**Why This Matters**:
+- Users can create custom skills without modifying Crow code
+- Extensions can be published and shared via PyPI
+- ACP clients can register hooks at runtime
+- Makes Crow truly extensible and composable
+
+**Related Documentation**:
+- `docs/essays/04-hooks-as-first-class-citizens.md` - Hook design philosophy
+- `docs/essays/05-hook-design-analysis.md` - Detailed hook architecture
+- `docs/essays/05-python-sdk-that-emerged.md` - Python SDK vision
+
+---
+
+## 🎯 Goal 7: KV Cache Preservation & Thinking Tokens
+
+### Status: 🟡 **INVESTIGATION NEEDED**
+
+**Problem Statement**:
+The user noticed that adding thinking tokens might be causing KV cache corruption. The concern is:
+- When we attach thinking tokens to messages, are we corrupting the KV cache?
+- Are the requests we send identical to what we'd send without thinking tokens?
+- Is the KV cache being preserved correctly across turns?
+
+**Investigation Needed**:
+1. Verify that thinking tokens are only for display (not part of KV cache)
+2. Check if attaching thinking tokens to messages affects KV cache
+3. Ensure KV cache is preserved across session reloads
+4. Test with local LLMs to see if cache preservation works
+
+**Questions to Answer**:
+- Are thinking tokens part of the prompt that goes to the LLM?
+- Or are they just for display to the user?
+- If they're part of the prompt, are we corrupting the KV cache?
+- Should thinking tokens be stored separately from regular messages?
+
+**Next Steps**:
+1. Research how thinking tokens work in the LLM protocol
+2. Check if thinking tokens are sent to the LLM or just displayed
+3. Test KV cache preservation with and without thinking tokens
+4. Add tests to verify KV cache is not corrupted
+
+**Related Code**:
+- `src/crow/agent/session.py` - Message storage
+- `src/crow/agent/acp_native.py` - React loop with thinking tokens
+- `src/crow/agent/llm.py` - LLM configuration
+
+**Priority**: Medium - Important for local LLM performance but not blocking
+
+---
+
 ## Architecture Achieved
 
 ### Single Source of Truth ✅
