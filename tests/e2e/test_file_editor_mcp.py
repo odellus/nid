@@ -16,11 +16,8 @@ from pathlib import Path
 import pytest
 from fastmcp import Client
 
-# Import the MCP server instance directly
-# This allows in-memory testing without subprocess complexity
-import sys
-sys.path.insert(0, "mcp-servers/file_editor")
-from server import mcp
+# Import the MCP server instance directly from the installed package
+from crow_mcp_server.main import mcp
 
 
 class TestFileEditorMCPServer:

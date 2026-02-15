@@ -45,7 +45,9 @@ from acp.schema import (
 
 from crow.agent.session import Session
 from crow.agent.llm import configure_llm
-from crow.agent.mcp_client import setup_mcp_client, get_tools
+from crow.agent.mcp_client import get_tools, create_mcp_client_from_acp
+from crow.agent.config import get_default_config, Config
+from fastmcp import Client as MCPClient
 
 logger = logging.getLogger(__name__)
 
@@ -59,25 +61,27 @@ class Agent(ACPAgent):
     - Contains all business logic (react loop, tool execution)
     - Manages resources via AsyncExitStack
     - Stores minimal in-memory state (MCP clients, sessions)
+    - Receives MCP servers from ACP client at runtime
     
     No wrapper, no nesting - just one clean implementation.
     """
     
     _conn: Client
     
-    def __init__(self, db_path: str = "sqlite:///mcp_testing.db") -> None:
+    def __init__(self, config: Config | None = None) -> None:
         """
         Initialize the merged agent.
         
         Args:
-            db_path: Database connection string
+            config: Configuration object. If None, uses defaults from env vars
             
         Sets up:
         - AsyncExitStack for resource management
         - In-memory dictionaries for sessions and MCP clients
-        - LLM client
+        - LLM client from configuration
         """
-        self._db_path = db_path
+        self._config = config or get_default_config()
+        self._db_path = self._config.database_path
         self._exit_stack = AsyncExitStack()
         self._sessions: dict[str, Session] = {}
         self._mcp_clients: dict[str, Any] = {}  # session_id -> mcp_client
@@ -128,14 +132,13 @@ class Agent(ACPAgent):
         Create a new session with proper resource management.
         
         Uses AsyncExitStack to ensure MCP clients are cleaned up properly.
-        Uses the builtin MCP server if no servers provided by ACP client.
+        Uses MCP servers from config, or builtin server as default.
         """
         logger.info("Creating new session in cwd: %s", cwd)
         
-        # Use builtin MCP server as default
-        # TODO: Actually connect to MCP servers from mcp_servers list when provided by ACP client
-        builtin_mcp_path = "mcp-servers/builtin/server.py:mcp"
-        mcp_client = setup_mcp_client(builtin_mcp_path)
+        # Use builtin MCP server from config
+        mcp_config = self._config.get_builtin_mcp_config()
+        mcp_client = await create_mcp_client_from_config(mcp_config)
         
         # CRITICAL: Use AsyncExitStack for lifecycle management
         mcp_client = await self._exit_stack.enter_async_context(mcp_client)
@@ -149,7 +152,7 @@ class Agent(ACPAgent):
             prompt_args={"workspace": cwd},
             tool_definitions=tools,
             request_params={"temperature": 0.7},
-            model_identifier="glm-5",
+            model_identifier=self._config.default_model,
             db_path=self._db_path,
         )
         
@@ -175,8 +178,9 @@ class Agent(ACPAgent):
             # Load session from database
             session = Session.load(session_id, db_path=self._db_path)
             
-            # Setup MCP client
-            mcp_client = setup_mcp_client("src/crow/mcp/search.py")
+            # Setup MCP client (same as new_session)
+            mcp_config = self._config.get_builtin_mcp_config()
+            mcp_client = await create_mcp_client_from_config(mcp_config)
             
             # CRITICAL: Use AsyncExitStack for lifecycle management
             mcp_client = await self._exit_stack.enter_async_context(mcp_client)

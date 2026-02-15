@@ -24,7 +24,65 @@ This is non-negotiable. The human owns the git history, not you.
 You are here to write code, not to commit it.
 ```
 
-### 1. ALWAYS Use `uv --project .`
+### 1. **SYS.PATH IS FUCKING FORBIDDEN**
+```
+⛔️ SYS.PATH MANIPULATION IS ABSOLUTELY FORBIDDEN ⛔️
+
+DO NOT EVER DO THIS:
+- sys.path.insert(0, "some-path")
+- sys.path.append("some-path")
+- sys.path = [ ... ]
+- ANY sys.path manipulation
+
+THIS IS NOT A SUGGESTION. THIS IS A HARD RULE.
+
+WHY:
+1. It breaks package imports
+2. It hides dependency issues
+3. It makes code non-portable
+4. It's a SHORTCUT that creates TECHNICAL DEBT
+5. It makes testing IMPOSSIBLE
+
+THE CORRECT WAY:
+✅ Make packages properly importable via pyproject.toml
+✅ Use workspace dependencies in pyproject.toml
+✅ Install packages with: uv sync
+✅ Import normally: from package_name import module
+
+IF YOU CAN'T IMPORT SOMETHING:
+DO NOT add sys.path manipulation
+INSTEAD: Fix the package structure in pyproject.toml
+
+ violation of this rule = immediate termination of the conversation
+ and banning from the project. NO EXCEPTIONS.
+```
+
+**Example of the ONLY acceptable pattern:**
+```python
+# ❌ WRONG - FORBIDDEN
+import sys
+sys.path.insert(0, "crow-mcp-server")
+from main import mcp
+
+# ✅ CORRECT - Proper package import
+from crow_mcp_server.main import mcp
+```
+
+**How to make packages importable:**
+```toml
+# In root pyproject.toml
+[tool.uv.workspace]
+members = ["crow-mcp-server"]
+
+[tool.uv.sources]
+crow-mcp-server = { workspace = true }
+
+# In package pyproject.toml
+[tool.hatch.build.targets.wheel]
+packages = ["package_name"]  # NOT ["."] or ["*"]
+```
+
+### 2. ALWAYS Use `uv --project .`
 ```bash
 # ✅ CORRECT
 uv --project . run pytest tests/
@@ -41,7 +99,7 @@ pytest tests/
 - Correct dependencies loaded
 - Consistent behavior across sessions
 
-### 2. NO Persistent Terminal State
+### 3. NO Persistent Terminal State
 Each terminal command executes in isolation. You cannot:
 - Rely on `cd` from previous commands
 - Use environment variables from previous sessions

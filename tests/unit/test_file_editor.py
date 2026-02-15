@@ -10,10 +10,8 @@ from pathlib import Path
 
 import pytest
 
-# Import the module we're testing
-import sys
-sys.path.insert(0, "mcp-servers/file_editor")
-from server import FileEditor, EditorError
+# Import the module we're testing from the installed package
+from crow_mcp_server.main import FileEditor, EditorError
 
 
 class TestFileEditor:
@@ -271,7 +269,7 @@ class TestHistoryManager:
     
     def test_add_and_pop_history(self):
         """Should add and retrieve history."""
-        from server import HistoryManager
+        from crow_mcp_server.main import HistoryManager
         
         hm = HistoryManager(max_per_file=5)
         test_path = Path("/test/file.txt")
@@ -284,7 +282,7 @@ class TestHistoryManager:
     
     def test_history_eviction(self):
         """Should evict old entries when over limit."""
-        from server import HistoryManager
+        from main import HistoryManager
         
         hm = HistoryManager(max_per_file=3)
         test_path = Path("/test/file.txt")
@@ -306,7 +304,7 @@ class TestEncodingManager:
     
     def test_detect_utf8(self):
         """Should detect UTF-8."""
-        from server import EncodingManager
+        from main import EncodingManager
         
         em = EncodingManager()
         with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', delete=False) as f:
@@ -319,7 +317,7 @@ class TestEncodingManager:
     
     def test_encoding_cache(self):
         """Should cache encoding by mtime."""
-        from server import EncodingManager
+        from main import EncodingManager
         
         em = EncodingManager()
         with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', delete=False) as f:

@@ -26,14 +26,14 @@ class TestAgentE2E:
     async def test_agent_session_with_real_mcp_and_db(self, seeded_db, temp_workspace):
         """Test agent session creation with real MCP client and real database."""
         from crow.agent import Session
+        
+        from crow_mcp_server.main import mcp as file_editor_mcp
         from crow.agent.db import Prompt, Session as SessionModel, Event
         from sqlalchemy import create_engine
         from sqlalchemy.orm import Session as SQLAlchemySession
         
-        # Import real MCP server
-        import sys
-        sys.path.insert(0, "mcp-servers/file_editor")
-        from server import mcp as file_editor_mcp
+        # Import real MCP server from installed package
+        from crow_mcp_server.main import mcp as file_editor_mcp
         
         # Connect to REAL MCP server
         async with Client(transport=file_editor_mcp) as mcp_client:
@@ -82,9 +82,9 @@ class TestAgentE2E:
         """Test agent actually calling a real MCP tool."""
         from crow.agent import Session
         
-        import sys
-        sys.path.insert(0, "mcp-servers/file_editor")
-        from server import mcp as file_editor_mcp
+        from crow_mcp_server.main import mcp as file_editor_mcp
+        
+        from crow_mcp_server.main import mcp as file_editor_mcp
         
         async with Client(transport=file_editor_mcp) as mcp_client:
             # Get tools
@@ -122,9 +122,8 @@ class TestAgentE2E:
         """Test multiple sessions are properly isolated."""
         from crow.agent import Session
         
-        import sys
-        sys.path.insert(0, "mcp-servers/file_editor")
-        from server import mcp as file_editor_mcp
+        from crow_mcp_server.main import mcp as file_editor_mcp
+        
         
         async with Client(transport=file_editor_mcp) as mcp_client:
             tools_result = await mcp_client.list_tools()
@@ -171,13 +170,12 @@ class TestAgentE2E:
     async def test_agent_session_persistence_across_reload(self, seeded_db, temp_workspace):
         """Test session state persists correctly when reloaded."""
         from crow.agent import Session
+        
+        from crow_mcp_server.main import mcp as file_editor_mcp
         from crow.agent.db import Event, Session as SessionModel
         from sqlalchemy import create_engine
         from sqlalchemy.orm import Session as SQLAlchemySession
         
-        import sys
-        sys.path.insert(0, "mcp-servers/file_editor")
-        from server import mcp as file_editor_mcp
         
         async with Client(transport=file_editor_mcp) as mcp_client:
             tools_result = await mcp_client.list_tools()
@@ -250,6 +248,8 @@ class TestAgentE2E:
         
         # Step 2: Use prompt in session creation
         from crow.agent import Session
+        
+        from crow_mcp_server.main import mcp as file_editor_mcp
         
         tools = [{"type": "function", "function": {"name": "test", "parameters": {}}}]
         
