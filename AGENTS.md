@@ -51,6 +51,68 @@ Each terminal command executes in isolation. You cannot:
 
 ---
 
+## 🔄 The Dialectical Development Process
+
+### The Core Pattern
+
+```
+SEARCH/UNDERSTAND → ARTICULATE → BUILD CONSTRAINTS → DIALECTICAL ENGAGEMENT
+                                                              ↓
+                                              Compiler/Interpreter acts as ~X
+                                                              ↓
+                                   thesis (X) + antithesis (~X) → synthesis (Y)
+                                                              ↓
+                                                    NEW UNDERSTANDING
+```
+
+This is NOT:
+- ❌ "Write a test, make it pass, done"
+- ❌ "Write tests after implementation"
+- ❌ "Tests just verify code works"
+
+This IS:
+- ✅ **Search broadly** - Peel back layers of understanding (read code, specs, implementations)
+- ✅ **Articulate that understanding** - Document in essays what you've grokked
+- ✅ **Build constraints from understanding** - Tests encode *semantic constraints*, not implementation details
+- ✅ **Let the system negate you** - Run tests, watch them fail (~X contradicting X)
+- ✅ **Resolve contradiction** - The failure teaches you something deeper
+- ✅ **Synthesize new understanding (Y)** - Neither your original assumption X nor the raw error ~X, but a deeper truth Y
+
+### Test Layers as Dialectical Surfaces
+
+Each layer is where your assumptions meet reality:
+
+```
+Unit Tests        → Constraints on semantic behavior (isolated, fast feedback for dialectic)
+Integration Tests → Constraints on component interaction  
+E2E Tests         → Constraints on full system (REAL, NO MOCKS - reality as ~X)
+```
+
+### Essays as Agent Memory
+
+**This repository is a stateful agent.** The `docs/essays/` directory is its memory.
+
+Each essay captures a synthesis - a new understanding forged through the dialectic:
+
+- `00-*.md` - File editor semantics (understanding what a file editor IS for LLMs)
+- `01-*.md` - MCP server package structure
+- `02-*.md` - Hooks realization (understanding extensibility)
+- `03-*.md` - (Next topic...)
+- ...incrementing with each significant understanding
+
+**Essay Naming**:
+- Numbered sequentially: `00-`, `01-`, `02-`, ...
+- Descriptive name: `hooks-realization-and-agent-core.md`
+- Blog-post quality: teach the concepts, explain WHY
+
+**When to write an essay**:
+- After a significant realization
+- After deep research on a topic
+- When you've synthesized new understanding from failing tests
+- Before implementing a major feature (document understanding first)
+
+---
+
 ## 🧪 Testing & TDD
 
 ### Test-Driven Development (REQUIRED)
