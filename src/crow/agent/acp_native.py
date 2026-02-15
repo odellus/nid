@@ -15,7 +15,6 @@ from typing import Any
 
 from acp import (
     PROTOCOL_VERSION,
-    Agent,
     AuthenticateResponse,
     InitializeResponse,
     LoadSessionResponse,
@@ -25,6 +24,7 @@ from acp import (
     text_block,
     update_agent_message,
 )
+from acp import Agent as ACPAgent
 from acp.interfaces import Client
 from acp.schema import (
     AgentCapabilities,
@@ -50,7 +50,7 @@ from crow.agent.mcp_client import setup_mcp_client, get_tools
 logger = logging.getLogger(__name__)
 
 
-class Agent(Agent):
+class Agent(ACPAgent):
     """
     ACP-native agent - single agent class.
     
@@ -128,18 +128,19 @@ class Agent(Agent):
         Create a new session with proper resource management.
         
         Uses AsyncExitStack to ensure MCP clients are cleaned up properly.
+        Uses the builtin MCP server if no servers provided by ACP client.
         """
         logger.info("Creating new session in cwd: %s", cwd)
         
-        # Setup MCP client (for now, use default search.py)
-        # TODO: Use mcp_servers from ACP client
-        mcp_client = setup_mcp_client("src/crow/mcp/search.py")
+        # Use builtin MCP server as default
+        # TODO: Actually connect to MCP servers from mcp_servers list when provided by ACP client
+        builtin_mcp_path = "mcp-servers/builtin/server.py:mcp"
+        mcp_client = setup_mcp_client(builtin_mcp_path)
         
         # CRITICAL: Use AsyncExitStack for lifecycle management
-        # This ensures cleanup happens even if exceptions occur
         mcp_client = await self._exit_stack.enter_async_context(mcp_client)
         
-        # Get tools
+        # Get tools from MCP server
         tools = await get_tools(mcp_client)
         
         # Create Crow session (persisted to DB)
@@ -153,12 +154,11 @@ class Agent(Agent):
         )
         
         # Store in-memory references
-        # Note: Session is ALSO in DB, but we keep in-memory ref for performance
         self._sessions[session.session_id] = session
         self._mcp_clients[session.session_id] = mcp_client
         self._tools[session.session_id] = tools
         
-        logger.info("Created session: %s", session.session_id)
+        logger.info("Created session: %s with %d tools", session.session_id, len(tools))
         return NewSessionResponse(session_id=session.session_id, modes=None)
     
     async def load_session(

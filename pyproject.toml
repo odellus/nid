@@ -26,7 +26,5 @@ dev = [
 
 [tool.uv.workspace]
 members = [
-    "mcp-servers/file_editor",
-    "mcp-servers/terminal",
-    "mcp-servers/web",
+    "crow-mcp-server",
 ]
