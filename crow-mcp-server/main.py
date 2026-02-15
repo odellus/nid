@@ -9,11 +9,27 @@ Combines all builtin tools into one MCP server:
 This is the default MCP server for crow agents.
 """
 
+import base64
+import hashlib
+import json
 import logging
+import mimetypes
 import os
+import re
+import shutil
+import tempfile
+from pathlib import Path
 from typing import Literal
+from urllib.parse import urlparse, urlunparse
 
+import charset_normalizer
+import markdownify
+import readabilipy.simple_json
+from binaryornot.check import is_binary
+from cachetools import LRUCache
 from fastmcp import FastMCP
+from httpx import AsyncClient
+from pydantic import BaseModel
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -28,18 +44,6 @@ mcp = FastMCP(name="crow-builtin")
 # Import the file editor implementation
 # We'll inline the core logic here for a self-contained server
 
-import base64
-import hashlib
-import json
-import mimetypes
-import re
-import shutil
-import tempfile
-from pathlib import Path
-
-import charset_normalizer
-from binaryornot.check import is_binary
-from cachetools import LRUCache
 
 # Constants
 MAX_FILE_SIZE_MB = 10
@@ -459,14 +463,6 @@ async def file_editor(
         return f"Unexpected error: {e}\n"
 
 
-# =============================================================================
-# WEB SEARCH TOOL
-# =============================================================================
-
-from httpx import AsyncClient
-from pydantic import BaseModel
-
-
 class SearchResult(BaseModel):
     url: str
     title: str
@@ -543,15 +539,6 @@ async def web_search(query: str, limit: int = 5) -> str:
 
     return "".join(text)
 
-
-# =============================================================================
-# WEB FETCH TOOL
-# =============================================================================
-
-from urllib.parse import urlparse, urlunparse
-
-import markdownify
-import readabilipy.simple_json
 
 DEFAULT_USER_AGENT = "CrowAgent/1.0"
 
@@ -634,10 +621,6 @@ async def fetch(
     except Exception as e:
         return f"Error fetching {url}: {e}"
 
-
-# =============================================================================
-# MAIN
-# =============================================================================
 
 if __name__ == "__main__":
     mcp.run(transport="stdio")

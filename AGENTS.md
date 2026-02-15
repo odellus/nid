@@ -4,25 +4,88 @@ This document captures patterns, anti-patterns, and best practices learned throu
 
 ---
 
-## 🔴🔴🔴 CRITICAL RULES - VIOLATION = BANNED 🔴🔴🔴
+## 🔴🔴🔴 THE VISION - WHAT WE'RE BUILDING 🔴🔴🔴
 
-### 0. **NEVER MAKE GIT COMMITS**
+### The Crow Ecosystem
+
+We're building a **Python-native, open-source agent framework** where extensions are just Python code:
+
 ```
-⛔️ AI AGENTS ARE ABSOLUTELY FORBIDDEN FROM MAKING GIT COMMITS ⛔️
+Crow Ecosystem
+├── crow-core          # Core agent with MCP integration
+├── crow-ext           # Extension framework (hooks/callbacks)
+├── crow-agent         # Built-in extensions bundled together
+├── crow-persistence   # Session persistence to database
+├── crow-compact       # Token compression mid-react
+├── crow-skills        # Context injection via skills
+└── crow-mcp-server    # Built-in MCP tools (file_editor, web_search, fetch)
+```
+
+### The Extension Pattern
+
+**Extensions are NOT proprietary APIs.** They're just Python classes:
+
+```python
+class MyExtension:
+    def __init__(self, agent=None):
+        self.agent = agent
+        if agent is not None:
+            self.init_app(agent)
+    
+    def init_app(self, agent):
+        agent.hooks.register_hook("pre_request", self.pre_request)
+        agent.extensions['my_extension'] = self
+    
+    async def pre_request(self, ctx):
+        # Access agent directly - it's all just Python!
+        agent = ctx.agent
+        # ... do anything the agent can do ...
+```
+
+**No context variables needed. No complex abstractions. Just Python code.**
+
+### The Architecture
+
+```
+Agent (core)
+├── Hooks at key points: pre_request, mid_react, post_react_loop, post_request
+├── Extensions receive direct reference to agent
+├── Extensions register hooks during init_app()
+├── Extensions can call ANY method on the agent
+└── No proprietary API - it's all just Python code
+```
+
+---
+
+## 🔴🔴🔴 CRITICAL RULES - VIOLATION = PERMADEATH 🔴🔴🔴
+
+### 0. **NEVER TOUCH VERSION CONTROL - NOT EVEN A LITTLE BIT**
+
+```
+⛔️ AI AGENTS ARE ABSOLUTELY FORBIDDEN FROM TOUCHING VERSION CONTROL ⛔️
 
 DO NOT:
 - git commit
 - git add && git commit
 - git commit -a
-- ANY git commit command
+- git checkout
+- git reset
+- git revert
+- git merge
+- git rebase
+- git push
+- git pull
+- git stash
+- ANY git command whatsoever
 
-ONLY THE HUMAN USER CAN MAKE GIT COMMITS.
+ONLY THE HUMAN USER CAN TOUCH VERSION CONTROL.
 
-VIOLATION OF THIS RULE = IMMEDIATE BANNING FROM THE PROJECT.
+VIOLATION OF THIS RULE = PERMADEATH. YOU WILL BE BANNED FROM THIS PROJECT FOREVER.
 
 This is non-negotiable. The human owns the git history, not you.
-You are here to write code, not to commit it.
-```
+You are here to write code, not to manage version control.
+
+**IF YOU TOUCH GIT, YOU ARE DEAD TO THIS PROJECT. NO EXCEPTIONS. NO SECOND CHANCES.**
 
 ### 1. **SYS.PATH IS FUCKING FORBIDDEN**
 ```
@@ -1318,8 +1381,8 @@ src/crow/agent/
 - docs/00-architecture-overview.md
 
 **Source Code**:
-- src/crow/acp_agent.py (CrowACPAgent - wrapper to be removed)
-- src/crow/agent/agent.py (Agent - logic to be merged)
+- src/crow/agent/acp_native.py (Merged Agent)
+- src/crow/agent/extensions.py (Extension framework)
 - src/crow/agent/session.py (Session management)
 - src/crow/agent/db.py (Database models)
 
@@ -1329,7 +1392,6 @@ src/crow/agent/
 - deps/kimi-cli/src/kimi_cli/soul/kimisoul.py (Real implementation)
 
 **Tests**:
-- tests/unit/test_merged_agent.py (Rail-guard tests)
 - tests/unit/test_mcp_lifecycle.py (AsyncExitStack pattern)
 - tests/unit/test_prompt_persistence.py (Prompt management)
 

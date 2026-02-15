@@ -1,5 +1,5 @@
 """
-Crow Agent - Clean agent implementation with session management.
+Crow Agent - Clean agent implementation with session management and extensions.
 """
 
 # Import the merged ACP-native agent (the only agent we export)
@@ -16,6 +16,14 @@ from .mcp_client import (
     create_mcp_client_from_config,
 )
 from .config import Config, LLMConfig, get_default_config, get_config_dir
+
+# Import extension system
+from .extensions import (
+    Extension,
+    ExtensionContext,
+    HookRegistry,
+    get_current_agent,
+)
 
 __all__ = [
     "Agent",
@@ -36,4 +44,9 @@ __all__ = [
     "LLMConfig",
     "get_default_config",
     "get_config_dir",
+    # Extension system
+    "Extension",
+    "ExtensionContext",
+    "HookRegistry",
+    "get_current_agent",
 ]

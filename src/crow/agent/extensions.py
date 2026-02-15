@@ -1,8 +1,13 @@
 """
-Extension system - Reflective SDK for Crow agents.
+Extension system - Direct code interface for Crow agents.
 
 This module provides the extension context and hook registry for extending
 Crow agent behavior through callbacks/hooks.
+
+Like Flask extensions, we use the actual Python code as the interface.
+Extensions receive a direct reference to the Agent and can call any method.
+
+No proprietary API needed - it's all just Python code running locally.
 """
 
 from __future__ import annotations
@@ -32,16 +37,16 @@ class ExtensionContext:
     - LLM access
     - Tool access
     - Hook management
+    
+    Like Flask's extension pattern, extensions receive a direct reference
+    to the Agent and can call any method on it. No proprietary API needed!
     """
     
     # Agent references
     session: Session
     config: Config
     db_session: SQLAlchemySession
-    
-    # Internal state (not for extensions to access directly)
-    _agent: Any = field(repr=False, default=None)  # Reference to Agent
-    _hooks: Any = field(repr=False, default=None)  # Reference to HookRegistry
+    agent: Any  # Direct reference to Agent - extensions can call any method
     
     # ========================================================================
     # MESSAGE ACCESS (Read-only, for inspection)
