@@ -1,11 +1,14 @@
 [project]
-name = "nid"
+name = "crow"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "agent-client-protocol>=0.8.0",
+    "binaryornot>=0.4.4",
+    "cachetools>=7.0.0",
+    "charset-normalizer>=3.4.4",
     "fastmcp>=2.14.4",
     "ipython>=9.9.0",
     "jinja2>=3.1.6",
@@ -19,4 +22,11 @@ dependencies = [
 dev = [
     "pytest>=9.0.2",
     "pytest-asyncio>=0.23.0",
+]
+
+[tool.uv.workspace]
+members = [
+    "mcp-servers/file_editor",
+    "mcp-servers/terminal",
+    "mcp-servers/web",
 ]

@@ -12,8 +12,8 @@ import pytest
 from contextlib import AsyncExitStack
 from sqlalchemy.orm import Session as SQLAlchemySession
 
-from nid.agent import Session, configure_llm, get_tools
-from nid.agent.db import Prompt
+from crow.agent import Session, configure_llm, get_tools
+from crow.agent.db import Prompt
 
 
 class TestSessionLifecycle:

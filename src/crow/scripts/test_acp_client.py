@@ -4,10 +4,10 @@ Test script to verify the ACP agent works.
 
 Usage:
     # Terminal 1: Run the agent
-    uv run python src/nid/acp_agent.py
+    uv run python src/crow/acp_agent.py
     
     # Terminal 2: Run the client
-    uv run python src/nid/scripts/test_acp_client.py
+    uv run python src/crow/scripts/test_acp_client.py
 """
 
 import asyncio

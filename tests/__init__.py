@@ -1,5 +1,5 @@
 """
-Test suite for NID Agent.
+Test suite for Crow Agent.
 
 This test suite follows a multi-level testing strategy:
 
@@ -40,7 +40,7 @@ pytest -m "not slow"
 
 Run with coverage:
 ```bash
-pytest --cov=src/nid --cov-report=html
+pytest --cov=src/crow --cov-report=html
 ```
 """
 

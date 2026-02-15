@@ -1,5 +1,5 @@
 """
-ACP Agent wrapper for NID Agent.
+ACP Agent wrapper for Crow Agent.
 
 This wraps our clean Agent/Session implementation with ACP protocol handling.
 """
@@ -40,20 +40,20 @@ from acp.schema import (
     ToolCallStart,
 )
 
-from nid.agent import Agent as NidAgent
-from nid.agent import Session, configure_llm, get_tools, setup_mcp_client
+from crow.agent import Agent as Agent
+from crow.agent import Session, configure_llm, get_tools, setup_mcp_client
 
 logger = logging.getLogger(__name__)
 
 
 class CrowACPAgent(Agent):
     """
-    ACP protocol wrapper for NID Agent.
+    ACP protocol wrapper for Crow Agent.
     
     Handles:
     - ACP protocol methods (initialize, new_session, prompt, etc.)
-    - Session management (maps ACP session IDs to NID Sessions)
-    - Streaming updates (converts NID generator to ACP notifications)
+    - Session management (maps ACP session IDs to Crow Sessions)
+    - Streaming updates (converts Crow generator to ACP notifications)
     - Resource lifecycle (MCP clients are properly cleaned up)
     
     Uses AsyncExitStack to manage MCP client lifecycle ensuring:
@@ -64,7 +64,7 @@ class CrowACPAgent(Agent):
     
     _conn: Client
     _sessions: dict[str, Session]
-    _agents: dict[str, NidAgent]
+    _agents: dict[str, Agent]
     _exit_stack: AsyncExitStack
     
     def __init__(self) -> None:
@@ -109,12 +109,12 @@ class CrowACPAgent(Agent):
         mcp_servers: list[HttpMcpServer | SseMcpServer | McpServerStdio],
         **kwargs: Any,
     ) -> NewSessionResponse:
-        """Create a new session with NID Agent using AsyncExitStack for lifecycle management."""
+        """Create a new session with Crow Agent using AsyncExitStack for lifecycle management."""
         logger.info("Creating new session in cwd: %s", cwd)
         
         # Setup MCP client (for now, use default search.py)
         # TODO: Use mcp_servers from ACP client
-        mcp_client = setup_mcp_client("src/nid/mcp/search.py")
+        mcp_client = setup_mcp_client("src/crow/mcp/search.py")
         
         # Enter MCP client context using AsyncExitStack (proper lifecycle management!)
         # This ensures cleanup happens even if exceptions occur
@@ -123,7 +123,7 @@ class CrowACPAgent(Agent):
         # Get tools
         tools = await get_tools(mcp_client)
         
-        # Create NID session
+        # Create Crow session
         session = Session.create(
             prompt_id="crow-v1",
             prompt_args={"workspace": cwd},
@@ -132,8 +132,8 @@ class CrowACPAgent(Agent):
             model_identifier="glm-5",
         )
         
-        # Create NID agent
-        agent = NidAgent(
+        # Create Crow agent
+        agent = Agent(
             session=session,
             llm=self._llm,
             mcp_client=mcp_client,
@@ -163,7 +163,7 @@ class CrowACPAgent(Agent):
             session = Session.load(session_id)
             
             # Setup MCP client
-            mcp_client = setup_mcp_client("src/nid/mcp/search.py")
+            mcp_client = setup_mcp_client("src/crow/mcp/search.py")
             
             # Enter MCP client context using AsyncExitStack (proper lifecycle management!)
             mcp_client = await self._exit_stack.enter_async_context(mcp_client)
@@ -172,7 +172,7 @@ class CrowACPAgent(Agent):
             tools = await get_tools(mcp_client)
             
             # Create agent with loaded session
-            agent = NidAgent(
+            agent = Agent(
                 session=session,
                 llm=self._llm,
                 mcp_client=mcp_client,
@@ -212,7 +212,7 @@ class CrowACPAgent(Agent):
         """
         Handle prompt request - main entry point for user messages.
         
-        This is where we run the NID Agent react loop and stream updates back.
+        This is where we run the Crow Agent react loop and stream updates back.
         """
         logger.info("Prompt request for session: %s", session_id)
         
@@ -311,10 +311,10 @@ async def main() -> None:
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-    logger.info("Starting NID ACP Agent (merged)")
-    # Use the new merged NidAgent
-    from nid.agent import NidAgent
-    await run_agent(NidAgent())
+    logger.info("Starting Crow ACP Agent (merged)")
+    # Use the new merged Agent
+    from crow.agent import Agent
+    await run_agent(Agent())
 
 
 if __name__ == "__main__":

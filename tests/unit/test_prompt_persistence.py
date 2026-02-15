@@ -11,7 +11,7 @@ These tests verify:
 import pytest
 from sqlalchemy.orm import Session as SQLAlchemySession
 
-from nid.agent.db import Prompt
+from crow.agent.db import Prompt
 
 
 class TestPromptLookup:

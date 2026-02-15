@@ -1,8 +1,8 @@
-# NID Agent Architecture Overview
+# Crow Agent Architecture Overview
 
 ## Vision
 
-NID Agent is an ACP-native, MCP-first AI coding agent. We don't build frameworks - we connect protocols.
+Crow Agent is an ACP-native, MCP-first AI coding agent. We don't build frameworks - we connect protocols.
 
 ## Core Philosophy
 
@@ -10,7 +10,7 @@ NID Agent is an ACP-native, MCP-first AI coding agent. We don't build frameworks
 Frameworkless Framework: We don't build agent frameworks. We connect protocols.
 
 The protocols (ACP, MCP, Agentskills) handle the hard parts.
-NID Agent just orchestrates them elegantly.
+Crow Agent just orchestrates them elegantly.
 ```
 
 **What we are:**
@@ -30,7 +30,7 @@ NID Agent just orchestrates them elegantly.
 ### 1. ACP-First Agent
 **Status**: In progress (merging agents into single ACP-native implementation)
 
-Single `NidAgent(acp.Agent)` class:
+Single `Agent(acp.Agent)` class:
 - Business logic lives IN the agent
 - No wrapper, no separate framework
 - ACP protocol compliance IS the architecture
@@ -47,7 +47,7 @@ All agent frameworks are just sophisticated tool calling frameworks. FastMCP alr
 - MCP is the standard, we just consume it
 - Framework-free: MCP + react loop = agent
 
-**Implementation**: `src/nid/mcp/search.py`, `src/nid/agent/mcp.py`
+**Implementation**: `src/crow/mcp/search.py`, `src/crow/agent/mcp.py`
 
 ### 3. Persistence (ACP session/load)
 **Status**: ✅ Complete
@@ -59,7 +59,7 @@ Our persistence layer implements ACP's session/load specification:
 
 **This isn't just "persistence"** - it's ACP session management implemented correctly.
 
-**Implementation**: `src/nid/agent/session.py`, `src/nid/agent/db.py`
+**Implementation**: `src/crow/agent/session.py`, `src/crow/agent/db.py`
 
 ### 4. SKILLS (CRITICAL - NOT YET IMPLEMENTED)
 **Status**: ❌ NOT BEGUN
@@ -81,7 +81,7 @@ System prompt versioning and rendering:
 - Lookup-or-create pattern
 - Deterministic session IDs for KV cache reuse
 
-**Implementation**: `src/nid/agent/prompt.py`, `src/nid/agent/prompts/`
+**Implementation**: `src/crow/agent/prompt.py`, `src/crow/agent/prompts/`
 
 ### 6. Compaction
 **Status**: ❌ NOT YET IMPLEMENTED
@@ -124,7 +124,7 @@ Post-request hook:
                        │ ACP Protocol (stdio/JSON-RPC)
                        │
          ┌─────────────┴─────────────┐
-         │    NidAgent(acp.Agent)    │ ← Single ACP-native agent
+         │    Agent(acp.Agent)    │ ← Single ACP-native agent
          │  - Business logic IN agent│
          │  - AsyncExitStack         │
          │  - Session management     │

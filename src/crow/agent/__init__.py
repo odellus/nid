@@ -1,9 +1,9 @@
 """
-NID Agent - Clean agent implementation with session management.
+Crow Agent - Clean agent implementation with session management.
 """
 
 # Import the merged ACP-native agent
-from .acp_native import NidAgent
+from .acp_native import Agent
 
 # Also import from current module for backward compatibility
 from .agent import Agent
@@ -14,7 +14,7 @@ from .llm import configure_llm
 from .mcp_client import setup_mcp_client, get_tools
 
 __all__ = [
-    "NidAgent",  # Export merged agent
+    "Agent",  # Export merged agent
     "Agent",  # Deprecated - will be removed
     "Session",
     "lookup_or_create_prompt",

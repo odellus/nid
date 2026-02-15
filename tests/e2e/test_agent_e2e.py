@@ -1,215 +1,227 @@
 """
 End-to-end tests for the full agent flow.
 
+NO MOCKS. Real agent, real MCP, real DB, real everything.
+
 These tests verify:
-- Complete ACP agent lifecycle
+- Complete ACP agent lifecycle with real components
 - Full integration of all components
 - Real-world usage scenarios
+
+If these tests pass, the system actually works.
 """
 
 import pytest
+import tempfile
+from pathlib import Path
 from contextlib import AsyncExitStack
+
+from fastmcp import Client
 
 
 class TestAgentE2E:
-    """End-to-end tests for the complete agent flow."""
+    """End-to-end tests with REAL components - NO MOCKS."""
     
     @pytest.mark.asyncio
-    async def test_agent_full_lifecycle_with_cleanup(self, seeded_db, temp_workspace):
-        """Test complete agent lifecycle from creation to cleanup."""
+    async def test_agent_session_with_real_mcp_and_db(self, seeded_db, temp_workspace):
+        """Test agent session creation with real MCP client and real database."""
+        from crow.agent import Session
+        from crow.agent.db import Prompt, Session as SessionModel, Event
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import Session as SQLAlchemySession
         
-        # Simulating the CrowACPAgent pattern
-        class MockAgent:
-            """Mock agent for E2E testing."""
+        # Import real MCP server
+        import sys
+        sys.path.insert(0, "mcp-servers/file_editor")
+        from server import mcp as file_editor_mcp
+        
+        # Connect to REAL MCP server
+        async with Client(transport=file_editor_mcp) as mcp_client:
+            # Get real tools from the MCP server
+            tools_result = await mcp_client.list_tools()
+            tools = []
+            for t in tools_result:
+                tools.append({
+                    "type": "function",
+                    "function": {
+                        "name": t.name,
+                        "description": t.description or "",
+                        "parameters": t.inputSchema,
+                    }
+                })
             
-            def __init__(self):
-                self.exit_stack = AsyncExitStack()
-                self.sessions = {}
-                self.clients = {}
+            # Create REAL session in REAL database
+            session = Session.create(
+                prompt_id="test-prompt-v1",
+                prompt_args={"workspace": temp_workspace},
+                tool_definitions=tools,
+                request_params={"temperature": 0.7},
+                model_identifier="test-model",
+                db_path=seeded_db,
+            )
             
-            async def new_session(self, session_id, workspace, mcp_client, prompt_id, db_path):
-                """Create a new session with proper resource management."""
-                # Enter MCP client context (this is the fix!)
-                client = await self.exit_stack.enter_async_context(mcp_client)
-                
-                # Simulate session creation
-                self.sessions[session_id] = {
-                    "workspace": workspace,
-                    "prompt_id": prompt_id,
-                    "created": True,
+            # Verify session was created
+            assert session is not None
+            assert session.session_id is not None
+            assert len(session.messages) > 0
+            
+            # Verify in database
+            engine = create_engine(seeded_db)
+            db = SQLAlchemySession(engine)
+            
+            db_session = db.query(SessionModel).filter_by(
+                session_id=session.session_id
+            ).first()
+            assert db_session is not None
+            
+            db.close()
+            engine.dispose()
+    
+    @pytest.mark.asyncio
+    async def test_agent_calls_real_mcp_tool(self, seeded_db, temp_workspace):
+        """Test agent actually calling a real MCP tool."""
+        from crow.agent import Session
+        
+        import sys
+        sys.path.insert(0, "mcp-servers/file_editor")
+        from server import mcp as file_editor_mcp
+        
+        async with Client(transport=file_editor_mcp) as mcp_client:
+            # Get tools
+            tools_result = await mcp_client.list_tools()
+            tools = [{"type": "function", "function": {"name": t.name, "description": t.description or "", "parameters": t.inputSchema}} for t in tools_result]
+            
+            # Create session
+            session = Session.create(
+                prompt_id="test-prompt-v1",
+                prompt_args={"workspace": temp_workspace},
+                tool_definitions=tools,
+                request_params={},
+                model_identifier="test-model",
+                db_path=seeded_db,
+            )
+            
+            # Actually call a tool through MCP
+            test_file = Path(temp_workspace) / "test.txt"
+            result = await mcp_client.call_tool(
+                name="file_editor",
+                arguments={
+                    "command": "create",
+                    "path": str(test_file),
+                    "file_text": "Hello from real E2E test!",
                 }
-                self.clients[session_id] = client
-                
-                return session_id
+            )
             
-            async def cleanup_session(self, session_id):
-                """Remove session (resources cleaned by exit stack)."""
-                if session_id in self.sessions:
-                    del self.sessions[session_id]
-                if session_id in self.clients:
-                    del self.clients[session_id]
-            
-            async def shutdown(self):
-                """Cleanup all resources on shutdown."""
-                await self.exit_stack.aclose()
-        
-        # Mock MCP client
-        class MockMCPClient:
-            def __init__(self):
-                self.entered = False
-                self.exited = False
-            
-            async def __aenter__(self):
-                self.entered = True
-                return self
-            
-            async def __aexit__(self, *args):
-                self.exited = True
-            
-            async def list_tools(self):
-                from types import SimpleNamespace
-                return [SimpleNamespace(name="test", description="test", inputSchema={})]
-        
-        agent = MockAgent()
-        client = MockMCPClient()
-        
-        # Create session
-        session_id = await agent.new_session(
-            session_id="test-session",
-            workspace=temp_workspace,
-            mcp_client=client,
-            prompt_id="test-prompt-v1",
-            db_path=seeded_db,
-        )
-        
-        assert session_id == "test-session"
-        assert client.entered is True
-        assert client.exited is False
-        assert len(agent.sessions) == 1
-        
-        # Simulate doing some work
-        await agent.cleanup_session(session_id)
-        assert len(agent.sessions) == 0
-        
-        # Shutdown agent completely
-        await agent.shutdown()
-        
-        # Verify cleanup
-        assert client.exited is True
+            # Verify tool actually worked
+            assert test_file.exists()
+            assert test_file.read_text() == "Hello from real E2E test!"
+            assert "created successfully" in result.content[0].text.lower()
     
     @pytest.mark.asyncio
-    async def test_agent_handles_multiple_sessions_concurrently(
-        self, seeded_db, temp_workspace
-    ):
-        """Test agent managing multiple sessions simultaneously."""
+    async def test_agent_multiple_sessions_isolated(self, seeded_db):
+        """Test multiple sessions are properly isolated."""
+        from crow.agent import Session
         
-        class MultiSessionAgent:
-            def __init__(self):
-                self.exit_stack = AsyncExitStack()
-                self.sessions = {}
+        import sys
+        sys.path.insert(0, "mcp-servers/file_editor")
+        from server import mcp as file_editor_mcp
+        
+        async with Client(transport=file_editor_mcp) as mcp_client:
+            tools_result = await mcp_client.list_tools()
+            tools = [{"type": "function", "function": {"name": t.name, "description": t.description or "", "parameters": t.inputSchema}} for t in tools_result]
             
-            async def create_session(self, session_id, mcp_client):
-                client = await self.exit_stack.enter_async_context(mcp_client)
-                self.sessions[session_id] = client
-                return session_id
-            
-            async def shutdown(self):
-                await self.exit_stack.aclose()
-        
-        class MockClient:
-            def __init__(self, name):
-                self.name = name
-                self.entered = False
-                self.exited = False
-            
-            async def __aenter__(self):
-                self.entered = True
-                return self
-            
-            async def __aexit__(self, *args):
-                self.exited = True
-        
-        agent = MultiSessionAgent()
-        clients = [MockClient(f"client{i}") for i in range(3)]
-        
-        # Create multiple sessions
-        for i, client in enumerate(clients):
-            await agent.create_session(f"session-{i}", client)
-        
-        # All should be entered
-        assert all(c.entered for c in clients)
-        assert all(not c.exited for c in clients)
-        assert len(agent.sessions) == 3
-        
-        # Shutdown
-        await agent.shutdown()
-        
-        # All should be cleaned up
-        assert all(c.exited for c in clients)
+            # Create two sessions with different workspaces
+            with tempfile.TemporaryDirectory() as ws1, tempfile.TemporaryDirectory() as ws2:
+                session1 = Session.create(
+                    prompt_id="test-prompt-v1",
+                    prompt_args={"workspace": ws1},
+                    tool_definitions=tools,
+                    request_params={},
+                    model_identifier="test-model",
+                    db_path=seeded_db,
+                )
+                
+                session2 = Session.create(
+                    prompt_id="test-prompt-v1",
+                    prompt_args={"workspace": ws2},
+                    tool_definitions=tools,
+                    request_params={},
+                    model_identifier="test-model",
+                    db_path=seeded_db,
+                )
+                
+                # Sessions should have different IDs
+                assert session1.session_id != session2.session_id
+                
+                # Add messages to each session
+                session1.add_message("user", "Message for session 1")
+                session2.add_message("user", "Message for session 2")
+                
+                # Reload sessions and verify isolation
+                reloaded1 = Session.load(session1.session_id, seeded_db)
+                reloaded2 = Session.load(session2.session_id, seeded_db)
+                
+                # Each session should have its own message
+                assert "session 1" in str(reloaded1.messages)
+                assert "session 2" in str(reloaded2.messages)
+                assert "session 1" not in str(reloaded2.messages)
+                assert "session 2" not in str(reloaded1.messages)
     
     @pytest.mark.asyncio
-    async def test_agent_recovers_from_session_creation_failure(self):
-        """Test that agent can recover if a session creation fails."""
+    async def test_agent_session_persistence_across_reload(self, seeded_db, temp_workspace):
+        """Test session state persists correctly when reloaded."""
+        from crow.agent import Session
+        from crow.agent.db import Event, Session as SessionModel
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import Session as SQLAlchemySession
         
-        class ResilientAgent:
-            def __init__(self):
-                self.exit_stack = AsyncExitStack()
-                self.sessions = {}
+        import sys
+        sys.path.insert(0, "mcp-servers/file_editor")
+        from server import mcp as file_editor_mcp
+        
+        async with Client(transport=file_editor_mcp) as mcp_client:
+            tools_result = await mcp_client.list_tools()
+            tools = [{"type": "function", "function": {"name": t.name, "description": t.description or "", "parameters": t.inputSchema}} for t in tools_result]
             
-            async def create_session(self, session_id, mcp_client, should_fail=False):
-                client = await self.exit_stack.enter_async_context(mcp_client)
-                
-                if should_fail:
-                    raise ValueError("Session creation failed")
-                
-                self.sessions[session_id] = client
-                return session_id
+            # Create session
+            session = Session.create(
+                prompt_id="test-prompt-v1",
+                prompt_args={"workspace": temp_workspace},
+                tool_definitions=tools,
+                request_params={"temperature": 0.5},
+                model_identifier="persist-test-model",
+                db_path=seeded_db,
+            )
             
-            async def shutdown(self):
-                await self.exit_stack.aclose()
-        
-        class MockClient:
-            def __init__(self, name):
-                self.name = name
-                self.entered = False
-                self.exited = False
+            session_id = session.session_id
             
-            async def __aenter__(self):
-                self.entered = True
-                return self
+            # Add messages and events
+            session.add_message("user", "Test message for persistence")
             
-            async def __aexit__(self, *args):
-                self.exited = True
-        
-        agent = ResilientAgent()
-        client1 = MockClient("client1")
-        client2 = MockClient("client2")
-        client3 = MockClient("client3")
-        
-        # First session succeeds
-        await agent.create_session("s1", client1)
-        assert "s1" in agent.sessions
-        
-        # Second session fails
-        with pytest.raises(ValueError, match="Session creation failed"):
-            await agent.create_session("s2", client2, should_fail=True)
-        
-        # Third session succeeds (agent recovers)
-        await agent.create_session("s3", client3)
-        assert "s3" in agent.sessions
-        
-        # All clients should be cleaned up on shutdown
-        await agent.shutdown()
-        
-        assert client1.exited
-        assert client2.exited
-        assert client3.exited
+            # Reload from database
+            reloaded = Session.load(session_id, seeded_db)
+            
+            # Verify session ID preserved
+            assert reloaded.session_id == session_id
+            
+            # Verify messages preserved
+            assert len(reloaded.messages) > 0
+            assert "persistence" in str(reloaded.messages)
+            
+            # Verify in database model
+            engine = create_engine(seeded_db)
+            db = SQLAlchemySession(engine)
+            db_session = db.query(SessionModel).filter_by(session_id=session_id).first()
+            assert db_session is not None
+            assert db_session.model_identifier == "persist-test-model"
+            
+            db.close()
+            engine.dispose()
     
     @pytest.mark.asyncio
     async def test_full_prompt_lifecycle_e2e(self, temp_db):
         """Test full prompt lifecycle: create, lookup, use in session."""
-        
-        from nid.agent.db import Prompt, Session as SessionModel
+        from crow.agent.db import Prompt, Session as SessionModel
         from sqlalchemy import create_engine
         from sqlalchemy.orm import Session as SQLAlchemySession
         
@@ -237,7 +249,7 @@ class TestAgentE2E:
         engine.dispose()
         
         # Step 2: Use prompt in session creation
-        from nid.agent import Session
+        from crow.agent import Session
         
         tools = [{"type": "function", "function": {"name": "test", "parameters": {}}}]
         

@@ -18,19 +18,19 @@ class TestMergedAgentStructure:
     @pytest.mark.asyncio
     async def test_single_agent_exists(self):
         """Verify single agent class (no wrapper)"""
-        # Should be able to import NidAgent that inherits from acp.Agent
-        from nid.agent import NidAgent
+        # Should be able to import Agent that inherits from acp.Agent
+        from crow.agent import Agent
         from acp import Agent
         
-        agent = NidAgent()
-        assert isinstance(agent, Agent), "NidAgent must inherit from acp.Agent"
+        agent = Agent()
+        assert isinstance(agent, Agent), "Agent must inherit from acp.Agent"
     
     @pytest.mark.asyncio
     async def test_no_nested_agents(self):
         """Verify no nested agent instances"""
-        from nid.agent import NidAgent
+        from crow.agent import Agent
         
-        agent = NidAgent()
+        agent = Agent()
         
         # Should NOT have _agents dict (that was the wrapper)
         assert not hasattr(agent, '_agents'), "No _agents dict - no nested agents"
@@ -42,9 +42,9 @@ class TestMergedAgentStructure:
     @pytest.mark.asyncio
     async def test_has_acp_methods(self):
         """Verify all ACP methods exist"""
-        from nid.agent import NidAgent
+        from crow.agent import Agent
         
-        agent = NidAgent()
+        agent = Agent()
         
         # Required ACP methods
         required_methods = [
@@ -61,10 +61,10 @@ class TestMergedAgentStructure:
     @pytest.mark.asyncio
     async def test_acp_methods_are_async(self):
         """Verify ACP methods are async"""
-        from nid.agent import NidAgent
+        from crow.agent import Agent
         import asyncio
         
-        agent = NidAgent()
+        agent = Agent()
         
         async_methods = [
             'initialize',
@@ -86,22 +86,22 @@ class TestMergedAgentBusinessLogic:
     @pytest.mark.asyncio
     async def test_has_react_loop(self):
         """Verify react loop exists as method"""
-        from nid.agent import NidAgent
+        from crow.agent import Agent
         
-        agent = NidAgent()
+        agent = Agent()
         
-        # Should have _react_loop method (moved from old NidAgent)
+        # Should have _react_loop method (moved from old Agent)
         assert hasattr(agent, '_react_loop'), \
             "Should have _react_loop method"
     
     @pytest.mark.asyncio
     async def test_has_request_methods(self):
         """Verify LLM request methods exist"""
-        from nid.agent import NidAgent
+        from crow.agent import Agent
         
-        agent = NidAgent()
+        agent = Agent()
         
-        # Should have these methods moved from old NidAgent
+        # Should have these methods moved from old Agent
         methods = [
             '_send_request',
             '_process_chunk',
@@ -117,10 +117,10 @@ class TestMergedAgentBusinessLogic:
     @pytest.mark.asyncio
     async def test_react_loop_takes_session_param(self):
         """Verify react loop takes session as parameter (not instance var)"""
-        from nid.agent import NidAgent
+        from crow.agent import Agent
         import inspect
         
-        agent = NidAgent()
+        agent = Agent()
         
         # Get _react_loop signature
         sig = inspect.signature(agent._react_loop)
@@ -137,9 +137,9 @@ class TestMergedAgentResourceManagement:
     @pytest.mark.asyncio
     async def test_has_exit_stack(self):
         """Verify AsyncExitStack exists"""
-        from nid.agent import NidAgent
+        from crow.agent import Agent
         
-        agent = NidAgent()
+        agent = Agent()
         
         # Should have AsyncExitStack for managing MCP clients
         assert hasattr(agent, '_exit_stack'), \
@@ -149,9 +149,9 @@ class TestMergedAgentResourceManagement:
     @pytest.mark.asyncio
     async def test_has_cleanup_method(self):
         """Verify cleanup method exists"""
-        from nid.agent import NidAgent
+        from crow.agent import Agent
         
-        agent = NidAgent()
+        agent = Agent()
         
         # Should have cleanup method
         assert hasattr(agent, 'cleanup'), \
@@ -169,9 +169,9 @@ class TestMergedAgentSessionHandling:
     @pytest.mark.asyncio
     async def test_creates_session_with_mcp(self, mock_mcp_client, temp_workspace):
         """Verify new session creates MCP client via AsyncExitStack"""
-        from nid.agent import NidAgent
+        from crow.agent import Agent
         
-        agent = NidAgent()
+        agent = Agent()
         
         # Mock connection
         from unittest.mock import MagicMock
@@ -189,9 +189,9 @@ class TestMergedAgentSessionHandling:
     @pytest.mark.asyncio
     async def test_session_stores_session_data(self, temp_workspace):
         """Verify session data is stored correctly"""
-        from nid.agent import NidAgent
+        from crow.agent import Agent
         
-        agent = NidAgent()
+        agent = Agent()
         
         # Mock connection
         from unittest.mock import MagicMock
@@ -220,9 +220,9 @@ class TestMergedAgentStreaming:
     @pytest.mark.asyncio
     async def test_react_loop_yields_tokens(self, temp_workspace):
         """Verify react loop yields tokens for streaming"""
-        from nid.agent import NidAgent
+        from crow.agent import Agent
         
-        agent = NidAgent()
+        agent = Agent()
         
         # This test will need proper setup
         # Just verify module structure for now
@@ -238,13 +238,13 @@ class TestMergedAgentNoWrapper:
     
     @pytest.mark.asyncio
     async def test_no_separate_agent_class(self):
-        """Verify no separate NidAgent in agent/ module"""
+        """Verify no separate Agent in agent/ module"""
         import sys
         
-        # Old NidAgent should NOT exist in agent.agent module
+        # Old Agent should NOT exist in agent.agent module
         try:
-            from nid.agent.agent import Agent as OldNidAgent
-            assert False, "Old separate NidAgent class should not exist"
+            from crow.agent.agent import Agent as OldAgent
+            assert False, "Old separate Agent class should not exist"
         except ImportError:
             pass  # Good - old class doesn't exist
     
@@ -255,7 +255,7 @@ class TestMergedAgentNoWrapper:
         
         # CrowACPAgent wrapper should NOT exist
         try:
-            from nid.acp_agent import CrowACPAgent
+            from crow.acp_agent import CrowACPAgent
             # If it exists, it should just import the merged agent
             from acp import Agent
             assert issubclass(CrowACPAgent, Agent)
@@ -267,17 +267,17 @@ class TestMergedAgentImports:
     """Tests for import structure."""
     
     @pytest.mark.asyncio
-    async def test_agent_importable_from_nid(self):
-        """Verify agent can be imported from nid.agent"""
-        from nid.agent import NidAgent
+    async def test_agent_importable_from_crow(self):
+        """Verify agent can be imported from crow.agent"""
+        from crow.agent import Agent
         from acp import Agent
         
-        assert issubclass(NidAgent, Agent)
+        assert issubclass(Agent, Agent)
     
     @pytest.mark.asyncio
     async def test_agent_has_required_utilities(self):
         """Verify required utilities are importable"""
-        from nid.agent import (
+        from crow.agent import (
             configure_llm,
             setup_mcp_client,
             get_tools,

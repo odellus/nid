@@ -48,17 +48,17 @@ class Agent(Protocol):
 ### Current Structure
 
 ```
-src/nid/
+src/crow/
 ├── acp_agent.py           # CrowACPAgent - ACP wrapper
 └── agent/
-    └── agent.py           # NidAgent - business logic
+    └── agent.py           # Agent - business logic
 
-This creates: CrowACPAgent wraps NidAgent
+This creates: CrowACPAgent wraps Agent
 ```
 
 ### Problems with Current Approach
 
-1. **Unnecessary indirection**: CrowACPAgent just delegates to NidAgent
+1. **Unnecessary indirection**: CrowACPAgent just delegates to Agent
 2. **Violates ACP pattern**: Agent IS the implementation, not a wrapper
 3. **Confusion**: Two "agent" classes, unclear which is "the agent"
 4. **Extra abstraction without benefit**: No clear separation of concerns
@@ -66,11 +66,11 @@ This creates: CrowACPAgent wraps NidAgent
 ### What CrowACPAgent Does
 
 - Implements ACP protocol methods (initialize, new_session, prompt, etc.)
-- Maps ACP session IDs to NID Sessions
+- Maps ACP session IDs to Crow Sessions
 - Manages MCP client lifecycle with AsyncExitStack
-- Streams updates from NID generator to ACP notifications
+- Streams updates from Crow generator to ACP notifications
 
-### What NidAgent Does
+### What Agent Does
 
 - Contains the actual business logic
 - Implements react loop
@@ -211,7 +211,7 @@ class MergedAgent(Agent):
     
     async def new_session(...) -> NewSessionResponse:
         # Setup MCP client
-        mcp_client = setup_mcp_client("src/nid/mcp/search.py")
+        mcp_client = setup_mcp_client("src/crow/mcp/search.py")
         
         # CRITICAL: Use AsyncExitStack for lifecycle management
         mcp_client = await self._exit_stack.enter_async_context(mcp_client)
@@ -237,7 +237,7 @@ class MergedAgent(Agent):
 
 ## 7. Business Logic Methods to Merge
 
-From NidAgent → Merged Agent:
+From Agent → Merged Agent:
 
 ### Core Methods
 
@@ -294,11 +294,11 @@ From NidAgent → Merged Agent:
 ### Single Agent Class
 
 ```python
-# src/nid/agent.py
+# src/crow/agent.py
 from acp import Agent, PromptResponse
 from contextlib import AsyncExitStack
 
-class NidAgent(Agent):
+class Agent(Agent):
     """ACP-native agent - single agent class"""
     
     def __init__(self):
@@ -314,7 +314,7 @@ class NidAgent(Agent):
     
     async def new_session(self, cwd, mcp_servers, **kwargs):
         # Setup MCP client with AsyncExitStack
-        mcp_client = setup_mcp_client("src/nid/mcp/search.py")
+        mcp_client = setup_mcp_client("src/crow/mcp/search.py")
         mcp_client = await self._exit_stack.enter_async_context(mcp_client)
         
         # Get tools
@@ -342,7 +342,7 @@ class NidAgent(Agent):
         # Add user message
         session.add_message("user", extract_text(prompt))
         
-        # Run react loop (business logic from old NidAgent)
+        # Run react loop (business logic from old Agent)
         async for chunk in self._react_loop(session_id):
             chunk_type = chunk.get("type")
             
@@ -358,7 +358,7 @@ class NidAgent(Agent):
     async def cleanup(self):
         await self._exit_stack.aclose()
     
-    # Business logic methods (from old NidAgent)
+    # Business logic methods (from old Agent)
     def _send_request(self, session_id: str): ...
     def _process_chunk(self, ...): ...
     def _process_response(self, ...): ...
@@ -369,8 +369,8 @@ class NidAgent(Agent):
 ### File Structure After Merge
 
 ```
-src/nid/
-├── agent.py               # Merged NidAgent(acp.Agent) class
+src/crow/
+├── agent.py               # Merged Agent(acp.Agent) class
 └── agent/
     ├── session.py         # Session management
     ├── db.py              # Database models
@@ -385,7 +385,7 @@ src/nid/
 ## 9. Key Architectural Principles
 
 ### 1. Single Source of Truth
-- ONE agent class: `NidAgent(acp.Agent)`
+- ONE agent class: `Agent(acp.Agent)`
 - Business logic lives IN the agent
 - No wrappers, no delegation
 
@@ -420,7 +420,7 @@ src/nid/
 
 ### Phase 3: Merge Agents
 1. Create new MergedAgent class
-2. Copy business logic methods from NidAgent
+2. Copy business logic methods from Agent
 3. Update ACP methods to use business logic directly
 4. Run tests, fix breaking changes
 
@@ -474,6 +474,6 @@ src/nid/
 - ACP Specification: `deps/python-sdk/schema/schema.json`
 - ACP Examples: `deps/python-sdk/examples/`
 - kimi-cli Reference: `deps/kimi-cli/src/kimi_cli/soul/kimisoul.py`
-- Current Agent: `src/nid/acp_agent.py` (CrowACPAgent)
-- Old Agent Logic: `src/nid/agent/agent.py` (NidAgent)
-- Session Management: `src/nid/agent/session.py`
+- Current Agent: `src/crow/acp_agent.py` (CrowACPAgent)
+- Old Agent Logic: `src/crow/agent/agent.py` (Agent)
+- Session Management: `src/crow/agent/session.py`

@@ -2200,7 +2200,7 @@ You want me to help implement the ColBERT integration? Or do you want to figure 
 
 what the hell does this mean?
 
-it's in src/nid/agent/prompts/system_prompt.jinja2
+it's in src/crow/agent/prompts/system_prompt.jinja2
 
 realizing context engineering is going to be like more than half of this struggle lmao
 

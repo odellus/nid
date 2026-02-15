@@ -9,29 +9,32 @@ This document outlines the plan to properly implement our agent as an ACP-native
 ### Current Status: COMPLETE ✅
 
 **Implementation:**
-- Created `src/nid/agent/acp_native.py` with merged `NidAgent(acp.Agent)` class
-- Moved ALL business logic from old NidAgent into the new agent
+- Created `src/crow/agent/acp_native.py` with merged `Agent(acp.Agent)` class
+- Moved ALL business logic from old Agent into the new agent
 - Proper resource management with AsyncExitStack
 - Added `db_path` parameter for testability
 
 **Tests:**
-- ✅ 39 tests passing (up from 30 baseline - NO REGRESSIONS)
+- ✅ 41 tests passing (up from 30 baseline - NO REGRESSIONS)
 - ✅ Live E2E test passing with REAL LLM + DB + MCP (no mocks!)
+- ✅ Comprehensive validation: DB state, streaming, session reload, ACP protocol
 - ✅ Session creation, persistence, and reload working
-- ✅ Conversation history preserved across reloads
+- ✅ Conversation history preserved across reloads (system, user, assistant)
+- ✅ Multi-session isolation working (UUID-based session IDs)
 - 6 rail-guard tests failing (expected - TDD markers for cleanup phase)
+- 8 compaction tests failing (expected - TDD markers for next feature)
 
 **Known Issues:**
 - Old `agent.py` and `acp_agent.py` still exist (Phase 6 cleanup)
 - Minor parameter naming (`session_id` vs `session`) - acceptable
 
 ```
-src/nid/
+src/crow/
 ├── acp_agent.py           # CrowACPAgent - ACP wrapper
 └── agent/
-    └── agent.py           # NidAgent - business logic
+    └── agent.py           # Agent - business logic
     
-This creates: CrowACPAgent wraps NidAgent
+This creates: CrowACPAgent wraps Agent
 ```
 
 **Why this is wrong:**
@@ -43,7 +46,7 @@ This creates: CrowACPAgent wraps NidAgent
 ### Target Architecture (Correct Pattern)
 
 ```
-src/nid/
+src/crow/
 └── agent.py               # Single Agent(acp.Agent) class
     
 This creates: Agent inherits from acp.Agent directly
@@ -58,10 +61,10 @@ This creates: Agent inherits from acp.Agent directly
 ### What This Looks Like
 
 ```python
-# src/nid/agent.py
+# src/crow/agent.py
 from acp import Agent, PromptResponse
 
-class NidAgent(Agent):
+class Agent(Agent):
     """ACP-native agent - single agent class"""
     
     def __init__(self):
@@ -76,7 +79,7 @@ class NidAgent(Agent):
     
     async def new_session(self, cwd, mcp_servers, **kwargs):
         # Setup MCP client (AsyncExitStack manages lifecycle)
-        mcp_client = setup_mcp_client("src/nid/mcp/search.py")
+        mcp_client = setup_mcp_client("src/crow/mcp/search.py")
         mcp_client = await self._exit_stack.enter_async_context(mcp_client)
         
         # Get tools
@@ -108,7 +111,7 @@ class NidAgent(Agent):
         # Add user message
         session.add_message("user", extract_text(prompt))
         
-        # Run react loop (business logic from old NidAgent)
+        # Run react loop (business logic from old Agent)
         async for chunk in self._react_loop(session, mcp_client, tools):
             await self._conn.session_update(
                 session_id,
@@ -132,7 +135,7 @@ class NidAgent(Agent):
    - Study `deps/python-sdk/examples/agent.py`
    - Study `deps/kimi-cli/` for real-world implementation
 
-2. **Extract business logic from old NidAgent**
+2. **Extract business logic from old Agent**
    - `react_loop()` method
    - `send_request()` method
    - `process_response()` method
@@ -145,8 +148,8 @@ class NidAgent(Agent):
    - Use AsyncExitStack for resource management
 
 4. **Update imports and entry point**
-   - Update `src/nid/acp_agent.py` to use new agent
-   - Or rename to `src/nid/agent.py` and delete old agent module
+   - Update `src/crow/acp_agent.py` to use new agent
+   - Or rename to `src/crow/agent.py` and delete old agent module
    - Update `__init__.py` exports
 
 5. **Update tests**
@@ -155,11 +158,74 @@ class NidAgent(Agent):
 
 ---
 
-## 🎯 Goal 2: Fix Git Submodules
+## 🎯 Goal 2: Implement MCP Tools for Shell and File Editing
 
-### Current Problem
+### ✅ Status: File Editor COMPLETE (needs tests)
 
-Git is warning about embedded repositories:
+**Implementation Date**: February 14, 2026
+
+**What Was Done**:
+1. ✅ Deep architectural study documented in `docs/essays/14Feb2026.md`
+   - Part 1: file_editor semantics (pattern matching tool for LLMs)
+   - Part 2: FastMCP protocol understanding
+2. ✅ Clean implementation in `mcp-servers/file_editor/server.py`
+   - **NO openhands SDK dependencies**
+   - Standard library + minimal deps (charset_normalizer, binaryornot, cachetools)
+   - ~580 lines of focused code
+   - Preserves all critical semantics (exact matching, encoding, history, rich errors)
+
+**What's Left**:
+- Unit tests (started in `tests/unit/test_file_editor.py`)
+- E2E test with live MCP server
+- Terminal MCP server (same approach)
+
+**Key Insight**: file_editor is NOT a text editor - it's a semantic string manipulation tool designed for how LLMs think about text (patterns, not cursors).
+
+### Requirements
+
+**Shell Tool:**
+- Study kimi-cli shell implementation
+- Test if ACP client exposes shell capability
+- If client has shell, use client's shell instead of our own
+- Otherwise, implement MCP shell tool similar to kimi-cli
+
+**File Editor Tool:**
+- **DO NOT copy kimi-cli's file editor** (user reports it's broken, agents fall back to sed/awk)
+- **DO study openhands file_editor tool** (deps/software-agent-sdk/openhands-tools/)
+- Implement proper file editing with:
+  - View files
+  - Create files
+  - Edit files (str_replace pattern like we use)
+  - Delete files
+  - Proper error handling
+
+### Implementation Approach
+
+```bash
+# Research openhands file editor
+cat deps/software-agent-sdk/openhands-tools/openhands/tools/file_editor/
+
+# Research kimi-cli shell
+cat deps/kimi-cli/src/kimi_cli/tools/shell.py
+
+# Check ACP client capabilities for shell
+# TODO: Determine how to query client for shell support
+```
+
+### File Structure
+
+```
+src/crow/mcp/
+├── search.py          # Existing search MCP
+├── shell.py           # Shell execution MCP (new)
+└── file_editor.py     # File editing MCP (new)
+```
+
+---
+
+## 🎯 Goal 3: Enhanced E2E Testing Framework
+
+
 ```
 warning: adding embedded git repository: deps/kimi-cli
 warning: adding embedded git repository: deps/software-agent-sdk
@@ -316,7 +382,7 @@ Verify all are correctly implemented according to spec.
 ## 📐 Architecture Principles
 
 ### Single Source of Truth
-- ONE agent class (`NidAgent(acp.Agent)`)
+- ONE agent class (`Agent(acp.Agent)`)
 - Business logic lives IN the agent
 - No wrappers, no delegation, no confusion
 
@@ -342,9 +408,9 @@ Verify all are correctly implemented according to spec.
 - ACP Specification: `deps/python-sdk/schema/schema.json`
 - ACP Examples: `deps/python-sdk/examples/`
 - Kimi-cli Reference: `deps/kimi-cli/`
-- Current Agent: `src/nid/acp_agent.py` (CrowACPAgent)
-- Old Agent Logic: `src/nid/agent/agent.py` (NidAgent)
-- Session Management: `src/nid/agent/session.py`
+- Current Agent: `src/crow/acp_agent.py` (CrowACPAgent)
+- Old Agent Logic: `src/crow/agent/agent.py` (Agent)
+- Session Management: `src/crow/agent/session.py`
 - Test Suite: `tests/`
 
 ---
@@ -353,7 +419,7 @@ Verify all are correctly implemented according to spec.
 
 A merged ACP agent is complete when:
 
-1. ✅ Single `NidAgent(acp.Agent)` class exists
+1. ✅ Single `Agent(acp.Agent)` class exists
 2. ✅ All business logic incorporated
 3. ✅ All ACP methods implemented correctly
 4. ✅ Resource cleanup verified (AsyncExitStack)

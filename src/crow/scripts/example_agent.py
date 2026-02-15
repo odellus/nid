@@ -10,7 +10,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from nid.agent import (
+from crow.agent import (
     Agent,
     Session,
     create_database,
@@ -28,7 +28,7 @@ async def main():
     
     # Setup LLM and MCP
     llm = configure_llm(debug=False)
-    mcp_client = setup_mcp_client("src/nid/mcp/search.py")
+    mcp_client = setup_mcp_client("src/crow/mcp/search.py")
     
     async with mcp_client:
         # Get tools

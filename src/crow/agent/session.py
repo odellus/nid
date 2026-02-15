@@ -308,20 +308,9 @@ class Session:
         # Render system prompt
         system_prompt = render_template(prompt.template, **prompt_args)
         
-        # Create deterministic session ID
-        import json
-        session_hash = hashlib.sha256(
-            f"{prompt_id}:{json.dumps(prompt_args, sort_keys=True)}:{json.dumps(sorted([t['function']['name'] for t in tool_definitions]))}".encode()
-        ).hexdigest()[:16]
-        session_id = f"sess_{session_hash}"
-        
-        # Check if session already exists (for KV cache reuse)
-        existing = db.query(SessionModel).filter_by(session_id=session_id).first()
-        if existing:
-            db.close()
-            session = cls(session_id, db_path)
-            session.messages = [{"role": "system", "content": existing.system_prompt}]
-            return session
+        # Generate unique session ID (UUID-based, like everyone else)
+        import uuid
+        session_id = f"sess_{uuid.uuid4().hex[:16]}"
         
         # Create new session model
         session_model = SessionModel(

@@ -3,7 +3,7 @@ Merged ACP-native Agent.
 
 This is the single agent class that combines:
 - ACP protocol implementation (from CrowACPAgent)
-- Business logic (from old NidAgent)
+- Business logic (from old Agent)
 
 No wrapper, no nested agents - just one clean Agent(acp.Agent) implementation.
 """
@@ -43,14 +43,14 @@ from acp.schema import (
     ToolCallStart,
 )
 
-from nid.agent.session import Session
-from nid.agent.llm import configure_llm
-from nid.agent.mcp_client import setup_mcp_client, get_tools
+from crow.agent.session import Session
+from crow.agent.llm import configure_llm
+from crow.agent.mcp_client import setup_mcp_client, get_tools
 
 logger = logging.getLogger(__name__)
 
 
-class NidAgent(Agent):
+class Agent(Agent):
     """
     ACP-native agent - single agent class.
     
@@ -100,15 +100,15 @@ class NidAgent(Agent):
         **kwargs: Any,
     ) -> InitializeResponse:
         """Handle ACP initialization"""
-        logger.info("Initializing NidAgent")
+        logger.info("Initializing Agent")
         return InitializeResponse(
             protocol_version=PROTOCOL_VERSION,
             agent_capabilities=AgentCapabilities(
                 load_session=True,  # We support session loading
             ),
             agent_info=Implementation(
-                name="nid",
-                title="NID Agent",
+                name="crow",
+                title="Crow Agent",
                 version="0.1.0",
             ),
         )
@@ -133,7 +133,7 @@ class NidAgent(Agent):
         
         # Setup MCP client (for now, use default search.py)
         # TODO: Use mcp_servers from ACP client
-        mcp_client = setup_mcp_client("src/nid/mcp/search.py")
+        mcp_client = setup_mcp_client("src/crow/mcp/search.py")
         
         # CRITICAL: Use AsyncExitStack for lifecycle management
         # This ensures cleanup happens even if exceptions occur
@@ -142,7 +142,7 @@ class NidAgent(Agent):
         # Get tools
         tools = await get_tools(mcp_client)
         
-        # Create NID session (persisted to DB)
+        # Create Crow session (persisted to DB)
         session = Session.create(
             prompt_id="crow-v1",
             prompt_args={"workspace": cwd},
@@ -176,7 +176,7 @@ class NidAgent(Agent):
             session = Session.load(session_id, db_path=self._db_path)
             
             # Setup MCP client
-            mcp_client = setup_mcp_client("src/nid/mcp/search.py")
+            mcp_client = setup_mcp_client("src/crow/mcp/search.py")
             
             # CRITICAL: Use AsyncExitStack for lifecycle management
             mcp_client = await self._exit_stack.enter_async_context(mcp_client)
@@ -299,12 +299,12 @@ class NidAgent(Agent):
         The AsyncExitStack ensures all resources are cleaned up in reverse order
         of their creation, even if exceptions occur during cleanup.
         """
-        logger.info("Cleaning up NidAgent resources")
+        logger.info("Cleaning up Agent resources")
         await self._exit_stack.aclose()
         logger.info("Cleanup complete")
     
     # ========================================================================
-    # Business Logic Methods (from old NidAgent)
+    # Business Logic Methods (from old Agent)
     # ========================================================================
     
     def _send_request(self, session_id: str):

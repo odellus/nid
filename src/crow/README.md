@@ -1,11 +1,11 @@
-# NID Agent
+# Crow Agent
 
 Clean, minimal agent implementation with proper session management and prompt templates.
 
 ## Architecture
 
 ```
-src/nid/
+src/crow/
 ├── agent/
 │   ├── __init__.py         # Public API exports
 │   ├── agent.py            # Agent class (orchestration)
@@ -60,7 +60,7 @@ events:
 ## Usage
 
 ```python
-from nid.agent import Agent, Session, configure_llm, setup_mcp_client, get_tools
+from crow.agent import Agent, Session, configure_llm, setup_mcp_client, get_tools
 
 # Setup
 llm = configure_llm()
@@ -99,12 +99,12 @@ async with mcp_client:
 
 1. Create database and seed prompts:
 ```bash
-python src/nid/scripts/seed_prompts.py
+python src/crow/scripts/seed_prompts.py
 ```
 
 2. Run example:
 ```bash
-python src/nid/scripts/example_agent.py
+python src/crow/scripts/example_agent.py
 ```
 
 ## Benefits

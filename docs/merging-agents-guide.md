@@ -1,6 +1,6 @@
 # Merging Agents: Step-by-Step Guide
 
-This document provides the breadcrumb trail for merging NidAgent + CrowACPAgent into a single ACP-native agent.
+This document provides the breadcrumb trail for merging Agent + CrowACPAgent into a single ACP-native agent.
 
 ---
 
@@ -9,13 +9,13 @@ This document provides the breadcrumb trail for merging NidAgent + CrowACPAgent 
 **Before (Anti-Pattern)**:
 ```
 CrowACPAgent (wrapper)
-  └── wraps NidAgent (business logic)
+  └── wraps Agent (business logic)
        └── uses Session, MCP client, LLM
 ```
 
 **After (Correct Pattern)**:
 ```
-NidAgent(acp.Agent)
+Agent(acp.Agent)
   └── has Session, MCP client, LLM as instance variables
   └── react_loop, send_request, process_response as methods
 ```
@@ -24,7 +24,7 @@ NidAgent(acp.Agent)
 
 ## Source Files to Merge
 
-### From: `src/nid/acp_agent.py` (CrowACPAgent)
+### From: `src/crow/acp_agent.py` (CrowACPAgent)
 
 **Keep - These are ACP methods**:
 - `on_connect(conn)` - Store connection for updates
@@ -42,11 +42,11 @@ NidAgent(acp.Agent)
 **Instance Variables**:
 - `_conn: Client` - ACP connection
 - `_sessions: dict[str, Session]` - Session storage  
-- `_agents: dict[str, NidAgent]` - **DELETE THIS** - no nested agents
+- `_agents: dict[str, Agent]` - **DELETE THIS** - no nested agents
 - `_exit_stack: AsyncExitStack` - Resource management
 - `_llm: OpenAI` - LLM client
 
-### From: `src/nid/agent/agent.py` (NidAgent)
+### From: `src/crow/agent/agent.py` (Agent)
 
 **Move - These become methods on merged agent**:
 - `send_request()` - Send LLM request
@@ -71,25 +71,25 @@ NidAgent(acp.Agent)
 
 ```bash
 # Create merged agent
-touch src/nid/agent_merged.py
+touch src/crow/agent_merged.py
 ```
 
 Or rename and refactor:
 ```bash
 # Option A: Rename agent.py, refactor acp_agent.py into it
-mv src/nid/agent/agent.py src/nid/agent.py
+mv src/crow/agent/agent.py src/crow/agent.py
 # Then merge CrowACPAgent into it
 ```
 
 ### Step 2: Define Class Structure
 
 ```python
-# src/nid/agent.py OR src/nid/agent_merged.py
+# src/crow/agent.py OR src/crow/agent_merged.py
 
 from acp import Agent, PromptResponse
 from contextlib import AsyncExitStack
 
-class NidAgent(Agent):
+class Agent(Agent):
     """ACP-native agent - all business logic in one class"""
     
     def __init__(self):
@@ -116,7 +116,7 @@ Copy from `CrowACPAgent`:
 
 ### Step 4: Move Business Logic Methods
 
-Copy from old `NidAgent`:
+Copy from old `Agent`:
 - `send_request()` - becomes `self._send_request(session)`
 - `process_chunk()` - becomes `self._process_chunk(...)`
 - `process_response()` - becomes `self._process_response(...)`
@@ -143,7 +143,7 @@ async def prompt(self, prompt, session_id, **kwargs):
     user_text = extract_text_from_blocks(prompt)
     session.add_message("user", user_text)
     
-    # Run react loop from old NidAgent
+    # Run react loop from old Agent
     try:
         async for chunk in self._react_loop(session):
             # Stream updates to ACP client
@@ -166,7 +166,7 @@ async def new_session(self, cwd, mcp_servers, **kwargs):
     """Create new session with MCP client"""
     
     # Setup MCP client (managed by AsyncExitStack)
-    mcp_client = setup_mcp_client("src/nid/mcp/search.py")
+    mcp_client = setup_mcp_client("src/crow/mcp/search.py")
     mcp_client = await self._exit_stack.enter_async_context(mcp_client)
     
     # Get tools
@@ -196,7 +196,7 @@ async def new_session(self, cwd, mcp_servers, **kwargs):
 ```python
 async def _react_loop(self, session, max_turns: int = 50000):
     """
-    Main ReAct loop - moved from old NidAgent.
+    Main ReAct loop - moved from old Agent.
     Now takes session as parameter instead of self.session.
     """
     session_data = self._sessions[session.session_id]
@@ -237,10 +237,10 @@ async def _react_loop(self, session, max_turns: int = 50000):
 
 ## Common Pitfalls
 
-### Pitfall 1: Storing NidAgent instances
+### Pitfall 1: Storing Agent instances
 ❌ **Wrong**:
 ```python
-self._agents[session_id] = NidAgent(...)  # No nested agents!
+self._agents[session_id] = Agent(...)  # No nested agents!
 ```
 
 ✅ **Right**:
@@ -255,14 +255,14 @@ self._sessions[session_id] = {
 ### Pitfall 2: Session as instance variable
 ❌ **Wrong**:
 ```python
-class NidAgent:
+class Agent:
     def __init__(self, session):
         self.session = session  # One session per agent instance
 ```
 
 ✅ **Right**:
 ```python
-class NidAgent(Agent):
+class Agent(Agent):
     def _react_loop(self, session):  # Session as parameter
         # Multiple sessions handled by one agent
 ```
@@ -304,18 +304,18 @@ async for chunk in self._react_loop(session):
 ```python
 def test_agent_inherits_from_acp():
     from acp import Agent
-    from nid.agent import NidAgent
+    from crow.agent import Agent
     
-    agent = NidAgent()
+    agent = Agent()
     assert isinstance(agent, Agent)
 ```
 
 ### Test 2: Has Required ACP Methods
 ```python
 def test_agent_has_acp_methods():
-    from nid.agent import NidAgent
+    from crow.agent import Agent
     
-    agent = NidAgent()
+    agent = Agent()
     
     # Check ACP methods exist
     assert hasattr(agent, 'on_connect')
@@ -333,9 +333,9 @@ def test_agent_has_acp_methods():
 ### Test 3: Has Business Logic Methods
 ```python
 def test_agent_has_business_logic():
-    from nid.agent import NidAgent
+    from crow.agent import Agent
     
-    agent = NidAgent()
+    agent = Agent()
     
     # Check business logic methods exist (prefixed with _)
     assert hasattr(agent, '_send_request')
@@ -349,10 +349,10 @@ def test_agent_has_business_logic():
 ```python
 @pytest.mark.asyncio
 async def test_agent_resource_management():
-    from nid.agent import NidAgent
+    from crow.agent import Agent
     from contextlib import AsyncExitStack
     
-    agent = NidAgent()
+    agent = Agent()
     
     # Should have AsyncExitStack
     assert hasattr(agent, '_exit_stack')
@@ -366,9 +366,9 @@ async def test_agent_resource_management():
 ```python
 @pytest.mark.asyncio
 async def test_agent_creates_session(mock_mcp_client):
-    from nid.agent import NidAgent
+    from crow.agent import Agent
     
-    agent = NidAgent()
+    agent = Agent()
     
     # Create session
     response = await agent.new_session(
@@ -386,7 +386,7 @@ async def test_agent_creates_session(mock_mcp_client):
 
 After merge, verify:
 
-- [ ] Single `NidAgent(acp.Agent)` class exists
+- [ ] Single `Agent(acp.Agent)` class exists
 - [ ] No nested agent instances (`self._agents` deleted)
 - [ ] All ACP methods implemented
 - [ ] All business logic methods moved (with _ prefix if private)
@@ -403,11 +403,11 @@ After merge, verify:
 ## File Structure After
 
 ```
-src/nid/
-├── agent.py                 # Merged NidAgent(acp.Agent)
+src/crow/
+├── agent.py                 # Merged Agent(acp.Agent)
 ├── acp_agent.py            # DELETED or just imports agent.py
 ├── agent/
-│   ├── __init__.py         # Exports NidAgent
+│   ├── __init__.py         # Exports Agent
 │   ├── session.py          # Session management
 │   ├── db.py               # Database models
 │   ├── prompt.py           # Template rendering
@@ -423,12 +423,12 @@ src/nid/
 ## Entry Point
 
 ```python
-# src/nid/acp_agent.py (or delete and use agent.py directly)
-from nid.agent import NidAgent
+# src/crow/acp_agent.py (or delete and use agent.py directly)
+from crow.agent import Agent
 from acp import run_agent
 
 async def main():
-    await run_agent(NidAgent())
+    await run_agent(Agent())
 
 if __name__ == "__main__":
     import asyncio

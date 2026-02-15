@@ -1,11 +1,11 @@
-# Testing NID Agent with ACP
+# Testing Crow Agent with ACP
 
 ## Quick Start
 
 ### 1. Seed the database (first time only)
 
 ```bash
-uv run python src/nid/scripts/seed_prompts.py
+uv run python src/crow/scripts/seed_prompts.py
 ```
 
 ### 2. Test with ACP Client
@@ -14,18 +14,18 @@ uv run python src/nid/scripts/seed_prompts.py
 
 Terminal 1 - Start the agent:
 ```bash
-uv run python src/nid/acp_agent.py
+uv run python src/crow/acp_agent.py
 ```
 
 Terminal 2 - Start the client:
 ```bash
-uv run python deps/python-sdk/examples/client.py src/nid/acp_agent.py
+uv run python deps/python-sdk/examples/client.py src/crow/acp_agent.py
 ```
 
 **Option B: Use our test client**
 
 ```bash
-uv run python src/nid/scripts/test_acp_client.py
+uv run python src/crow/scripts/test_acp_client.py
 ```
 
 ### 3. Test with the Python SDK echo agent
@@ -58,7 +58,7 @@ uv run python deps/python-sdk/examples/client.py deps/python-sdk/examples/echo_a
 └──────────────┬──────────────────────────┘
                │
 ┌──────────────┴──────────────────────────┐
-│         NID Agent (Orchestration)       │
+│         Crow Agent (Orchestration)       │
 │  - React loop                           │
 │  - Tool execution via MCP               │
 │  - Response processing                  │
@@ -116,10 +116,10 @@ uv run pytest tests/
 ### Integration Test with ACP
 ```bash
 # Start agent
-uv run python src/nid/acp_agent.py &
+uv run python src/crow/acp_agent.py &
 
 # Run client test
-uv run python src/nid/scripts/test_acp_client.py
+uv run python src/crow/scripts/test_acp_client.py
 ```
 
 ## Environment Variables
@@ -141,7 +141,7 @@ uv pip install -e .
 **Database errors:**
 ```bash
 rm mcp_testing.db
-uv run python src/nid/scripts/seed_prompts.py
+uv run python src/crow/scripts/seed_prompts.py
 ```
 
 **ACP schema errors:**

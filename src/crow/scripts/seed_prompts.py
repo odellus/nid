@@ -9,8 +9,8 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from nid.agent import create_database, Prompt
-from nid.agent.db import Session as SQLAlchemySession
+from crow.agent import create_database, Prompt
+from crow.agent.db import Session as SQLAlchemySession
 from sqlalchemy import create_engine
 
 

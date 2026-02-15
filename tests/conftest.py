@@ -18,8 +18,8 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session as SQLAlchemySession
 
-from nid.agent import create_database
-from nid.agent.db import Base, Prompt, Session as SessionModel
+from crow.agent import create_database
+from crow.agent.db import Base, Prompt, Session as SessionModel
 
 
 # Configure pytest-asyncio
@@ -85,23 +85,20 @@ async def seeded_db(temp_db) -> AsyncGenerator[str, None]:
 
 
 @pytest.fixture
-def mock_mcp_client():
-    """Create a mock MCP client with proper async context manager protocol."""
+def mock_async_context():
+    """
+    Simple async context manager for UNIT tests of lifecycle patterns.
     
-    class MockMCPClient:
+    Used by test_mcp_lifecycle.py and test_session_lifecycle.py to test
+    AsyncExitStack behavior without needing a real MCP server.
+    
+    NOT for E2E tests - E2E tests use real FastMCP Client.
+    """
+    
+    class MockAsyncContextManager:
         def __init__(self):
             self.entered = False
             self.exited = False
-            self.tools = [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "test_tool",
-                        "description": "A test tool",
-                        "parameters": {"type": "object", "properties": {}},
-                    },
-                }
-            ]
         
         async def __aenter__(self):
             self.entered = True
@@ -112,42 +109,25 @@ def mock_mcp_client():
             return False  # Don't suppress exceptions
         
         async def list_tools(self):
-            """Mock list_tools returning test tools."""
+            """Minimal interface for tests that check tool access."""
             from types import SimpleNamespace
-            return [
-                SimpleNamespace(
-                    name="test_tool",
-                    description="A test tool",
-                    inputSchema={"type": "object", "properties": {}},
-                )
-            ]
+            return [SimpleNamespace(name="test_tool", description="test", inputSchema={})]
         
         async def call_tool(self, name, args):
-            """Mock call_tool returning test result."""
+            """Minimal interface for tests that check tool calling."""
             from types import SimpleNamespace
             from mcp.types import TextContent
             return SimpleNamespace(
-                content=[TextContent(type="text", text="Tool executed successfully")]
+                content=[TextContent(type="text", text="Mock result")]
             )
     
-    return MockMCPClient()
+    return MockAsyncContextManager()
 
 
 @pytest.fixture
-def cleanup_tracker():
-    """Track cleanup calls for verification in tests."""
-    
-    class CleanupTracker:
-        def __init__(self):
-            self.cleanup_called = False
-            self.cleanup_exception = None
-        
-        async def cleanup(self, exc_type=None, exc_val=None, exc_tb=None):
-            """Mark cleanup as called."""
-            self.cleanup_called = True
-            self.cleanup_exception = exc_val
-    
-    return CleanupTracker()
+def mock_mcp_client(mock_async_context):
+    """Alias for backward compatibility with existing tests."""
+    return mock_async_context
 
 
 @pytest.fixture

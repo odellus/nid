@@ -1,4 +1,4 @@
-# NID Agent Development Guide
+# Crow Agent Development Guide
 
 This document captures patterns, anti-patterns, and best practices learned through iterative development. **Read this first before making changes to the codebase.**
 
@@ -28,7 +28,7 @@ You are here to write code, not to commit it.
 ```bash
 # ✅ CORRECT
 uv --project . run pytest tests/
-uv --project . run python src/nid/acp_agent.py
+uv --project . run python src/crow/acp_agent.py
 
 # ❌ WRONG - Will use wrong Python/environment
 python -m pytest tests/
@@ -83,7 +83,7 @@ uv --project . run pytest tests/e2e/ -v           # Full stack tests
 uv --project . run pytest tests/unit/test_mcp_lifecycle.py -v
 
 # Run with coverage
-uv --project . run pytest --cov=src/nid --cov-report=html tests/
+uv --project . run pytest --cov=src/crow --cov-report=html tests/
 
 # Run tests matching pattern
 uv --project . run pytest tests/ -k "lifecycle" -v
@@ -226,7 +226,7 @@ We don't build agent frameworks. We connect protocols.
 **Status**: In progress (merging agents into single ACP-native implementation)
 
 We implement `agent-client-protocol` directly on top of minimal react loops:
-- Single `NidAgent(acp.Agent)` class
+- Single `Agent(acp.Agent)` class
 - Business logic lives IN the agent
 - No wrapper, no separate framework
 - ACP protocol compliance is the architecture
@@ -242,7 +242,7 @@ All agent frameworks are just sophisticated tool calling frameworks. FastMCP alr
 - MCP is the standard, we just consume it
 - Framework-free: MCP + react loop = agent
 
-**Implementation**: `src/nid/mcp/search.py`, `src/nid/agent/mcp.py`
+**Implementation**: `src/crow/mcp/search.py`, `src/crow/agent/mcp.py`
 
 #### 3. Persistence (ACP session/load)
 **Status**: ✅ Complete
@@ -254,7 +254,7 @@ Our persistence layer implements ACP's session/load specification:
 
 **This isn't just persistence** - it's ACP session management implemented correctly.
 
-**Implementation**: `src/nid/agent/session.py`, `src/nid/agent/db.py`
+**Implementation**: `src/crow/agent/session.py`, `src/crow/agent/db.py`
 
 #### 4. SKILLS (CRITICAL - NOT YET IMPLEMENTED)
 **Status**: ❌ NOT BEGUN
@@ -276,7 +276,7 @@ System prompt versioning and rendering:
 - Lookup-or-create pattern
 - Deterministic session IDs for KV cache reuse
 
-**Implementation**: `src/nid/agent/prompt.py`, `src/nid/agent/prompts/`
+**Implementation**: `src/crow/agent/prompt.py`, `src/crow/agent/prompts/`
 
 #### 6. Compaction
 **Status**: ❌ NOT YET IMPLEMENTED
@@ -383,7 +383,7 @@ Conversation compaction to manage token limits. **Compaction creates a NEW sessi
 
 **Token Tracking** (post-request hook):
 ```python
-class NidAgent(Agent):
+class Agent(Agent):
     def __init__(self):
         self._token_counts = {}  # session_id -> {"input": 0, "output": 0, "threshold": 100000}
     
@@ -443,7 +443,7 @@ class NidAgent(Agent):
 
 ```python
 # Session management
-from nid.agent import Session, lookup_or_create_prompt
+from crow.agent import Session, lookup_or_create_prompt
 
 # Create session with prompt
 session = Session.create(
@@ -463,7 +463,7 @@ prompt_id = lookup_or_create_prompt(
 ### Database Models
 
 ```python
-from nid.agent.db import Prompt, Session as SessionModel, Event
+from crow.agent.db import Prompt, Session as SessionModel, Event
 
 # Prompt: System prompt templates
 # Session: Agent configuration (KV cache anchor)
@@ -473,7 +473,7 @@ from nid.agent.db import Prompt, Session as SessionModel, Event
 ### Agent Structure
 
 ```
-src/nid/
+src/crow/
 ├── acp_agent.py           # ACP protocol implementation
 ├── agent/
 │   ├── __init__.py
@@ -502,7 +502,7 @@ class MySpecialSession:
         self.resources.append(r)
 
 # ✅ CORRECT - Use existing abstractions
-from nid.agent import Session
+from crow.agent import Session
 session = Session.create(...)
 ```
 
@@ -572,7 +572,7 @@ uv --project . run pytest tests/unit/test_new_feature.py -v
 # Expected: FAIL
 
 # 3. Implement minimal code (GREEN)
-vim src/nid/agent/new_feature.py
+vim src/crow/agent/new_feature.py
 uv --project . run pytest tests/unit/test_new_feature.py -v
 # Expected: PASS
 
@@ -594,7 +594,7 @@ uv --project . run pytest tests/unit/test_bug_fix.py -v
 # Expected: FAIL (bug exists)
 
 # 2. Fix the bug
-vim src/nid/agent/buggy_file.py
+vim src/crow/agent/buggy_file.py
 
 # 3. Verify test passes (GREEN)
 uv --project . run pytest tests/unit/test_bug_fix.py -v
@@ -625,8 +625,8 @@ docs/                           # Project-specific docs
 ### Key Files to Read
 - `deps/python-sdk/docs/quickstart.md` - ACP patterns
 - `deps/python-sdk/examples/echo_agent.py` - Simple ACP agent
-- `src/nid/agent/session.py` - Session management patterns
-- `src/nid/acp_agent.py` - ACP implementation patterns
+- `src/crow/agent/session.py` - Session management patterns
+- `src/crow/acp_agent.py` - ACP implementation patterns
 
 ---
 
@@ -673,14 +673,14 @@ docs/                           # Project-specific docs
 ### Session 3: ACP Agent Merge - TDD Success
 
 **Problem**: Architectural anti-pattern with multiple agent classes
-- `CrowACPAgent` wrapper around `NidAgent` business logic
+- `CrowACPAgent` wrapper around `Agent` business logic
 - Violated ACP pattern (Agent IS the implementation)
 - Confusion about responsibilities
 
-**Solution**: Merged into single `NidAgent(acp.Agent)` class
+**Solution**: Merged into single `Agent(acp.Agent)` class
 - Research first: studied ACP spec, examples, kimi-cli
 - TDD approach: wrote tests FIRST (rail-guard tests)
-- Created `src/nid/agent/acp_native.py` with merged implementation
+- Created `src/crow/agent/acp_native.py` with merged implementation
 - All 30 original tests still pass (no regressions)
 - NEW live E2E test with REAL LLM/DB/MCP passing
 
@@ -689,7 +689,13 @@ docs/                           # Project-specific docs
 - **Don't mock in E2E**: E2E tests must use REAL components to validate the system works end-to-end
 - **TDD provides immediate verification**: Tests caught issues immediately during implementation
 - **Research-first pays off**: Understanding ACP patterns before implementing prevented mistakes
-- **39/44 tests passing**: 6 rail-guard tests failing as expected (cleanup phase markers)
+- **41/55 tests passing**: 14 failing are TDD markers for future features (compaction, cleanup)
+
+**Critical Bug Fixed**: Session ID Collision
+- Discovered via E2E testing: deterministic session IDs broke multi-session
+- Research showed EVERYONE uses UUID (echo_agent.py, kimi-cli)
+- Fixed to use `uuid.uuid4().hex[:16]` matching industry standard
+- XPASS on session isolation test proved fix worked
 
 **Anti-Patterns Avoided**:
 - ❌ Mocking in E2E tests (defeats the purpose)
@@ -703,6 +709,213 @@ docs/                           # Project-specific docs
 - Test writing time: ~1 hour
 - Debugging time: ~30 minutes
 - Total: ~6.5 hours for complete architectural refactor with tests
+
+---
+
+### Session 4: MCP Server Testing Pattern - TDD for Tools
+
+**Problem**: How to properly test MCP servers?
+- Needed E2E tests with real MCP protocol (not mocks)
+- Each MCP server should be its own package
+- Tests should validate MCP protocol compliance
+
+**Solution**: FastMCP Client with in-memory transport
+```python
+# tests/e2e/test_file_editor_mcp.py
+import pytest
+from fastmcp import Client
+from server import mcp
+
+async def test_view_command_reads_file():
+    """Real MCP protocol test - NO MOCKS."""
+    async with Client(transport=mcp) as client:
+        result = await client.call_tool(
+            name="file_editor",
+            arguments={"command": "view", "path": str(test_file)}
+        )
+        assert "Line 1" in result.content[0].text
+```
+
+**Test Categories**:
+1. **Unit tests** (28 tests): Fast, isolated, test FileEditor class directly
+2. **E2E tests** (15 tests): Real MCP protocol via FastMCP Client
+
+**Key Insight**: 
+- `Client(transport=mcp)` creates in-memory MCP connection
+- No subprocess needed for testing MCP protocol
+- Tests are fast (0.16s for 15 E2E tests)
+- NO MOCKS - real protocol, real file operations
+
+---
+
+### Session 5: The Mock Purge and Rename
+
+**Problem**: E2E tests were LYING
+- `test_agent_e2e.py` had `MockAgent`, `MockMCPClient`, `MockClient`
+- These tests validated NOTHING - just that mocks return what you tell them
+- Mock in E2E = fraud. You're not testing the system, you're testing your assumptions.
+
+**Solution**: Rewrote E2E tests with REAL components
+- Real FastMCP Client connecting to real MCP server
+- Real database (SQLite temp files)
+- Real file operations
+- 5 tests that actually prove the system works
+
+**Anti-Pattern Exposed**:
+```python
+# ❌ FRAUD - This tests nothing
+class MockAgent:
+    async def do_thing(self):
+        return "success"
+
+agent = MockAgent()
+assert await agent.do_thing() == "success"  # Well duh, you hard-coded it
+
+# ✅ REAL - This tests actual behavior
+async with Client(transport=mcp) as client:
+    result = await client.call_tool("file_editor", {...})
+    assert test_file.exists()  # Proved file was actually created
+```
+
+**Mock Fixture Clarity**:
+- Unit tests for `AsyncExitStack` patterns → mocks OK (testing pattern, not MCP)
+- E2E tests for agent flow → NO MOCKS (testing system, not assumptions)
+- Renamed `mock_mcp_client` → `mock_async_context` with explicit doc: "NOT for E2E tests"
+
+**Rename: `nid` → `crow`**:
+- `NidAgent` → `Agent` (clean - package is `crow`, class is `Agent`)
+- `from nid.` → `from crow.`
+- `src/nid/` → `src/crow/`
+- Deleted `nid.egg-info/`
+- 385 occurrences replaced
+
+**Test Results After Cleanup**:
+- `test_agent_e2e.py`: 5 passed (REAL MCP + REAL DB)
+- `test_file_editor_mcp.py`: 15 passed (REAL MCP + REAL files)
+- `test_mcp_lifecycle.py`: 8 passed (unit tests for async patterns)
+- `test_session_lifecycle.py`: 6 passed (integration with real DB)
+- `test_prompt_persistence.py`: 5 passed
+
+**Workflow Feedback** (from AI agent):
+
+The workflow works. The "friction" is productive:
+- "Slow is smooth and smooth is fast" - Research + essay upfront = no debugging later
+- E2E tests caught real bugs (view() wasn't validating paths)
+- The `Agent` rename forced simplification
+
+**Key Insight**: Mocks in E2E are dangerous. They feel like testing but prove nothing. The constraint "real components only in E2E" forces you to confront whether your system actually works.
+
+---
+
+---
+
+## 🎯 NEW DIRECTION: Build Crow as Proper ACP SDK
+
+**Problem with Current Approach:**
+- Handoff prompts require babysitting
+- Can't programmatically control agents
+- Can't chain agents (research → tests → implementation)
+- Not using the power of ACP protocol properly
+
+**Vision: Crow as ACP Agent SDK**
+```python
+# What we SHOULD be able to do:
+from crow import Agent, Conversation, LLM, Skills
+
+# Create research agent
+research_agent = Agent(
+    instructions="Research kimi-cli compaction and write failing tests",
+    skills=[Skills.read_file, Skills.write_file, Skills.search],
+    mcp_servers=[],  # No external MCPs needed
+)
+
+# Create implementation agent  
+impl_agent = Agent(
+    instructions="Implement compaction to make tests pass",
+    skills=[Skills.read_file, Skills.write_file, Skills.edit_file],
+    mcp_servers=["src/crow/mcp/search.py"],
+)
+
+# Chain them programmatically
+research_conv = Conversation(agent=research_agent, workspace="/tmp/research")
+research_conv.send_message("Study compaction in deps/kimi-cli and write tests in tests/unit/")
+research_conv.run()
+
+impl_conv = Conversation(agent=impl_agent, workspace="/tmp/impl")
+impl_conv.send_message("Read tests/unit/test_compaction_feature.py and implement")
+impl_conv.run()
+```
+
+**Inspiration from software-agent-sdk:**
+```python
+# deps/software-agent-sdk/examples/01_standalone_sdk/31_iterative_refinement.py
+
+# They can do THIS:
+refactoring_agent = get_default_agent(llm=llm, cli_mode=True)
+conversation = Conversation(agent=refactoring_agent, workspace=str(workspace_dir))
+conversation.send_message(prompt)
+conversation.run()
+
+# We need the SAME for Crow
+```
+
+**ACPNative Architecture Requirements:**
+
+1. **Programmatic Agent Creation**
+   - Pass instructions as parameter
+   - Pass MCP servers as parameter
+   - Pass skills as parameter
+   - Configure workspace/fs context
+
+2. **Conversation/Session Wrapper**
+   - Like software-agent-sdk's `Conversation`
+   - Or kimi-cli's `Soul` concept
+   - Manages message history
+   - Handles persistence
+   - Provides clean SDK API
+
+3. **MCP Integration**
+   - Built-in MCPs (our tools: shell, file_editor, search)
+   - Client-provided MCPs (via ACP protocol)
+   - Plug-and-play architecture
+
+4. **Skills System**
+   - Like kimi-cli's skills but ACP-native
+   - Text files with instructions
+   - Can be loaded dynamically
+   - Filesystem-based (user mentioned @-mentions)
+
+**Files to Study:**
+```bash
+# software-agent-sdk architecture
+deps/software-agent-sdk/openhands/sdk/
+deps/software-agent-sdk/openhands/core/
+
+# kimi-cli architecture
+deps/kimi-cli/src/kimi_cli/soul/
+deps/kimi-cli/src/kimi_cli/skill/
+
+# ACP protocol capabilities
+deps/python-sdk/schema/schema.json
+```
+
+**Implementation Order:**
+1. Research software-agent-sdk conversation/agent architecture
+2. Research kimi-cli soul/skills architecture  
+3. Design Crow SDK wrapper (Conversation class)
+4. Refactor Agent to be configurable (instructions, MCPs, skills)
+5. Implement Conversation wrapper
+6. Test with simple example (like echo_agent but programmatically)
+7. Use Crow SDK to implement compaction (dogfooding!)
+
+**Benefits:**
+- No more handoff prompts
+- Can programmatically coordinate multiple agents
+- Fits ACP protocol properly (MCP pluggability)
+- Better abstractions through SDK usage
+- Can use agent to write its own features!
+
+**This is the right direction. Build the SDK first.**
 
 ---
 
@@ -746,7 +959,7 @@ This is a living document. Keep it updated.
 - ✅ Session persistence working (Session.create/load)
 - ✅ Prompt management working (lookup_or_create_prompt)
 - ✅ AsyncExitStack pattern established
-- ❌ **Agents NOT merged** - Still have CrowACPAgent + NidAgent wrapper
+- ❌ **Agents NOT merged** - Still have CrowACPAgent + Agent wrapper
 - ❌ **Git submodules broken** - Added as embedded repos
 - ❌ **Compaction not implemented**
 - ❌ **Skills not implemented**
@@ -758,16 +971,24 @@ This is a living document. Keep it updated.
 3. **docs/merging-agents-guide.md** - Detailed code examples
 4. **docs/00-architecture-overview.md** - 6 core components
 
+### NEW: File Editor MCP Server (Priority)
+**Status**: ✅ Implemented (needs TDD tests)
+
+**What was done** (14 Feb 2026):
+- Deep architectural study of file_editor → `docs/essays/14Feb2026.md`
+- Implemented clean MCP server → `mcp-servers/file_editor/server.py`
+- **No openhands SDK dependencies** - built from understanding
+- ~580 lines, minimal deps (charset_normalizer, binaryornot, cachetools)
+
+**What's left**:
+- Write TDD tests (started in `tests/unit/test_file_editor.py`)
+- Write E2E test with live MCP server
+- Then implement terminal MCP server the same way
+
 ### The Main Task: Merge Agents
-**Goal**: Single `NidAgent(acp.Agent)` class, no wrapper
+**Goal**: Single `Agent(acp.Agent)` class, no wrapper
 
-**Why**: Current anti-pattern violates ACP pattern (Agent IS implementation)
-
-**How**: 
-1. Research ACP spec (`deps/python-sdk/schema/schema.json`)
-2. Study examples (`deps/python-sdk/examples/`)
-3. Move business logic into single Agent class
-4. Follow guide in `docs/merging-agents-guide.md`
+**Status**: ✅ COMPLETE - See IMPLEMENTATION_PLAN.md
 
 ### Key Architectural Decisions
 1. **Frameworkless Framework**: Connect protocols (ACP, MCP), don't build frameworks
@@ -803,8 +1024,8 @@ This is a living document. Keep it updated.
 
 ### File Structure to Create
 ```
-src/nid/agent.py              # Merged NidAgent(acp.Agent) class
-src/nid/agent/
+src/crow/agent.py              # Merged Agent(acp.Agent) class
+src/crow/agent/
 ├── session.py                # Session management
 ├── db.py                     # Database models
 ├── prompt.py                 # Template rendering
@@ -828,10 +1049,10 @@ src/nid/agent/
 - docs/00-architecture-overview.md
 
 **Source Code**:
-- src/nid/acp_agent.py (CrowACPAgent - wrapper to be removed)
-- src/nid/agent/agent.py (NidAgent - logic to be merged)
-- src/nid/agent/session.py (Session management)
-- src/nid/agent/db.py (Database models)
+- src/crow/acp_agent.py (CrowACPAgent - wrapper to be removed)
+- src/crow/agent/agent.py (Agent - logic to be merged)
+- src/crow/agent/session.py (Session management)
+- src/crow/agent/db.py (Database models)
 
 **Examples**:
 - deps/python-sdk/examples/echo_agent.py (Simplest ACP agent)

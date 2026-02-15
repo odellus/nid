@@ -16,9 +16,9 @@ class TestCompactionConfiguration:
     @pytest.mark.asyncio
     async def test_agent_has_compaction_threshold(self):
         """Agent should have a configurable compaction threshold"""
-        from nid.agent import NidAgent
+        from crow.agent import Agent
 
-        agent = NidAgent()
+        agent = Agent()
         
         # Should have compaction config
         assert hasattr(agent, '_compaction_threshold'), \
@@ -31,9 +31,9 @@ class TestCompactionConfiguration:
     @pytest.mark.asyncio
     async def test_agent_tracks_token_usage(self):
         """Agent should track cumulative token usage per session"""
-        from nid.agent import NidAgent
+        from crow.agent import Agent
 
-        agent = NidAgent()
+        agent = Agent()
         
         # Should track token counts
         assert hasattr(agent, '_token_counts'), \
@@ -48,9 +48,9 @@ class TestCompactionTrigger:
     @pytest.mark.asyncio
     async def test_compaction_triggered_at_threshold(self, temp_workspace):
         """Compaction should trigger when token count exceeds threshold"""
-        from nid.agent import NidAgent
+        from crow.agent import Agent
 
-        agent = NidAgent()
+        agent = Agent()
         
         # This should exist to check if compaction needed
         assert hasattr(agent, '_should_compact'), \
@@ -66,9 +66,9 @@ class TestCompactionTrigger:
     @pytest.mark.asyncio
     async def test_compaction_not_triggered_below_threshold(self, temp_workspace):
         """Compaction should NOT trigger when token count is below threshold"""
-        from nid.agent import NidAgent
+        from crow.agent import Agent
 
-        agent = NidAgent()
+        agent = Agent()
         
         # After creating session, should not need compaction
         # This will fail until we implement token tracking
@@ -82,10 +82,10 @@ class TestCompactionExecution:
     @pytest.mark.asyncio
     async def test_agent_has_compact_session_method(self):
         """Agent should have method to compact a session"""
-        from nid.agent import NidAgent
+        from crow.agent import Agent
         import inspect
 
-        agent = NidAgent()
+        agent = Agent()
         
         # Should have compaction method
         assert hasattr(agent, '_compact_session'), \
@@ -98,9 +98,9 @@ class TestCompactionExecution:
     @pytest.mark.asyncio
     async def test_compaction_preserves_recent_messages(self):
         """Compaction should preserve recent messages (keep tail)"""
-        from nid.agent import NidAgent
+        from crow.agent import Agent
 
-        agent = NidAgent()
+        agent = Agent()
         
         # Should have config for how many messages to keep
         assert hasattr(agent, '_compaction_keep_last'), \
@@ -109,9 +109,9 @@ class TestCompactionExecution:
     @pytest.mark.asyncio 
     async def test_compaction_creates_summary(self):
         """Compaction should create summary of old messages"""
-        from nid.agent import NidAgent
+        from crow.agent import Agent
 
-        agent = NidAgent()
+        agent = Agent()
         
         # Should have method to summarize
         assert hasattr(agent, '_summarize_messages'), \
@@ -124,9 +124,9 @@ class TestCompactionIntegration:
     @pytest.mark.asyncio
     async def test_compaction_during_react_loop(self, temp_workspace):
         """Compaction should be checked after each LLM call in react loop"""
-        from nid.agent import NidAgent
+        from crow.agent import Agent
 
-        agent = NidAgent()
+        agent = Agent()
         
         # React loop should check for compaction
         # We can't test this easily without actually running, but we can

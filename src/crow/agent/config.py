@@ -1,5 +1,5 @@
 """
-Configuration settings for NID Agent.
+Configuration settings for Crow Agent.
 """
 
 import os
@@ -18,4 +18,4 @@ DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "glm-5")
 DATABASE_PATH = os.getenv("DATABASE_PATH", "sqlite:///mcp_testing.db")
 
 # MCP Configuration
-DEFAULT_MCP_PATH = os.getenv("DEFAULT_MCP_PATH", "src/nid/mcp/search.py")
+DEFAULT_MCP_PATH = os.getenv("DEFAULT_MCP_PATH", "src/crow/mcp/search.py")
