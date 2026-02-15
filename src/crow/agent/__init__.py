@@ -9,7 +9,12 @@ from .session import Session, lookup_or_create_prompt
 from .db import Base, Session as SessionModel, Event, Prompt, create_database
 from .prompt import render_template
 from .llm import configure_llm
-from .mcp_client import setup_mcp_client, get_tools, create_mcp_client_from_acp
+from .mcp_client import (
+    setup_mcp_client,
+    get_tools,
+    create_mcp_client_from_acp,
+    create_mcp_client_from_config,
+)
 from .config import Config, LLMConfig, get_default_config, get_config_dir
 
 __all__ = [
@@ -26,6 +31,7 @@ __all__ = [
     "setup_mcp_client",
     "get_tools",
     "create_mcp_client_from_acp",
+    "create_mcp_client_from_config",
     "Config",
     "LLMConfig",
     "get_default_config",

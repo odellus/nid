@@ -18,4 +18,5 @@ Agent uses lots of search and articulates understanding, the builds constraints 
 
 -[x] Agent based on ACP  
 -[x] Session persistence  
--[ ] MCP tools for terminal and file editor taken from openhands
+-[x] MCP tools for terminal and file editor taken from openhands
+-[x] Extensions based on callback handlers at different parts of the react loop

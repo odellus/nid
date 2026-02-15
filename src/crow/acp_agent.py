@@ -41,7 +41,7 @@ from acp.schema import (
 )
 
 from crow.agent import Agent as Agent
-from crow.agent import Session, configure_llm, get_tools, setup_mcp_client
+from crow.agent import Session, configure_llm, get_tools, setup_mcp_client, create_mcp_client_from_acp
 
 logger = logging.getLogger(__name__)
 
@@ -111,10 +111,11 @@ class CrowACPAgent(Agent):
     ) -> NewSessionResponse:
         """Create a new session with Crow Agent using AsyncExitStack for lifecycle management."""
         logger.info("Creating new session in cwd: %s", cwd)
+        logger.info("MCP servers provided: %s", [s.name for s in mcp_servers])
         
-        # Setup MCP client (for now, use default search.py)
-        # TODO: Use mcp_servers from ACP client
-        mcp_client = setup_mcp_client("src/crow/mcp/search.py")
+        # Create MCP client from ACP-provided configuration
+        # This replaces the hardcoded setup_mcp_client("search.py") approach
+        mcp_client = await create_mcp_client_from_acp(mcp_servers)
         
         # Enter MCP client context using AsyncExitStack (proper lifecycle management!)
         # This ensures cleanup happens even if exceptions occur
@@ -157,13 +158,14 @@ class CrowACPAgent(Agent):
     ) -> LoadSessionResponse | None:
         """Load an existing session using AsyncExitStack for lifecycle management."""
         logger.info("Loading session: %s", session_id)
+        logger.info("MCP servers provided: %s", [s.name for s in mcp_servers])
         
         try:
             # Load session from database
             session = Session.load(session_id)
             
-            # Setup MCP client
-            mcp_client = setup_mcp_client("src/crow/mcp/search.py")
+            # Create MCP client from ACP-provided configuration
+            mcp_client = await create_mcp_client_from_acp(mcp_servers)
             
             # Enter MCP client context using AsyncExitStack (proper lifecycle management!)
             mcp_client = await self._exit_stack.enter_async_context(mcp_client)

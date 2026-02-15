@@ -1,9 +1,12 @@
-[submodule "deps/python-sdk"]
-	path = deps/python-sdk
-	url = https://github.com/agentclientprotocol/python-sdk
-[submodule "deps/software-agent-sdk"]
-	path = deps/software-agent-sdk
-	url = https://github.com/openhands/software-agent-sdk
-[submodule "deps/kimi-cli"]
-	path = deps/kimi-cli
+[submodule "refs/kimi-cli"]
+	path = refs/kimi-cli
 	url = git@github.com:MoonshotAI/kimi-cli.git
+[submodule "refs/software-agent-sdk"]
+	path = refs/software-agent-sdk
+	url = https://github.com/openhands/software-agent-sdk
+[submodule "refs/python-sdk"]
+	path = refs/python-sdk
+	url = https://github.com/agentclientprotocol/python-sdk
+[submodule "refs/pi-mono"]
+	path = refs/pi-mono
+	url = https://github.com/badlogic/pi-mono.git

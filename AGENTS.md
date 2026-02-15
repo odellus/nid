@@ -99,6 +99,100 @@ pytest tests/
 - Correct dependencies loaded
 - Consistent behavior across sessions
 
+---
+
+## 🔄 THE DIALECTICAL DEVELOPMENT PROCESS - THIS IS HOW WE WORK
+
+### The Core Pattern
+
+```
+UNDERSTAND → DOCUMENT → RESEARCH → BUILD CONSTRAINTS (TESTS) → IMPLEMENT → REFACTOR
+```
+
+**This is NOT linear. It's dialectical:**
+
+```
+1. Build understanding through search/reading → X (your mental model)
+2. Write tests that encode that understanding → Tests = X formalized
+3. Tests FAIL because nothing implemented → ~X (reality negates X)  
+4. Implementation synthesizes new understanding → Y (deeper truth)
+5. Tests pass → Y validated
+6. Refactor → Y refined
+```
+
+### Critical Insight: Tests Test Understanding, Not Code
+
+```python
+# ❌ WRONG: Tests verify implementation
+def test_agent_has_method_x():
+    assert hasattr(agent, 'method_x')  # Testing implementation details
+
+# ✅ CORRECT: Tests encode semantic understanding
+def test_session_persists_across_restart():
+    """Sessions should survive process restart - this is WHAT sessions ARE"""
+    session = Session.create(...)
+    session_id = session.session_id
+    
+    # Simulate restart
+    reloaded = Session.load(session_id)
+    
+    # Test our UNDERSTANDING of what sessions mean
+    assert reloaded.messages == session.messages
+```
+
+### The Dialectic in Practice
+
+**Thomas Wood's formulation:**
+> Basically, write tests based on your _understanding_. -> X
+> Tests fail [you haven't implemented anything] -> ~X  
+> Implementation/synthesis -> Y
+> X + ~X -> Y
+> 
+> And the tests don't test the code, they test our understanding.
+> The code grounds our understanding through tests.
+
+**What this means:**
+
+1. **SEARCH/UNDERSTAND** - Broad exploration (codebase + internet)
+2. **DOCUMENT** - Essays capture understanding (agent memory in `docs/essays/`)
+3. **RESEARCH** - Cast wide net, seek leverage (if fight is fair, tactics suck)
+4. **BUILD CONSTRAINTS** - Tests encode semantic understanding, not implementation
+5. **LET REALITY NEGATE** - Failing tests = ~X contradicting your assumptions
+6. **SYNTHESIZE** - New understanding Y from X + ~X
+7. **IMPLEMENT** - Code embodies synthesis
+8. **REFACTOR** - Clean up while keeping understanding valid
+
+### Test Layers as Dialectical Surfaces
+
+Each test layer is where assumptions meet reality:
+
+```
+Unit Tests        → Fast feedback, isolated semantics (dialectical surfaces for concepts)
+Integration Tests → Component interaction constraints  
+E2E Tests         → Full system constraints (REAL components, NO MOCKS)
+```
+
+### Essays as Agent Memory
+
+The `docs/essays/` directory IS this agent's memory. Each essay captures a synthesis:
+
+- `00-file-editor-semantics.md` - What file editor IS for LLMs (not what we assumed)
+- `01-mcp-server-structure.md` - How MCP packages should be structured
+- `02-hooks-realization.md` - Extensibility through hooks (not modification)
+- ...each essay = one significant understanding
+
+**Essay workflow:**
+1. Research deeply
+2. Realize something non-obvious
+3. Write essay explaining WHY
+4. Use that understanding to build tests
+5. Tests fail, teaching deeper truth
+6. Update essay or write new one
+
+---
+
+## 🛠️ Practical Workflow
+
 ### 3. NO Persistent Terminal State
 Each terminal command executes in isolation. You cannot:
 - Rely on `cd` from previous commands
