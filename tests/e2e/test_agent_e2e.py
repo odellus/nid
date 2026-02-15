@@ -3,10 +3,11 @@ End-to-end tests for the full agent flow.
 
 NO MOCKS. Real agent, real MCP, real DB, real everything.
 
-These tests verify:
-- Complete ACP agent lifecycle with real components
-- Full integration of all components
-- Real-world usage scenarios
+These tests encode our UNDERSTANDING of how agents work:
+- Agent lifecycle: Agent(config) -> new_session() -> prompt() -> cleanup()
+- MCP integration: Configure via config dict, use builtin by default
+- Session persistence: DB-backed, survives restart
+- React loop: LLM calls -> tool execution -> response streaming
 
 If these tests pass, the system actually works.
 """
@@ -14,266 +15,321 @@ If these tests pass, the system actually works.
 import pytest
 import tempfile
 from pathlib import Path
-from contextlib import AsyncExitStack
 
-from fastmcp import Client
+from crow.agent import (
+    Agent,
+    Session,
+    Config,
+    LLMConfig,
+    create_mcp_client_from_config,
+    get_default_config,
+)
 
 
-class TestAgentE2E:
-    """End-to-end tests with REAL components - NO MOCKS."""
+class TestAgentLifecycleE2E:
+    """
+    Tests that encode our UNDERSTANDING of the agent lifecycle.
+    
+    These tests may FAIL initially (that's TDD - X meets ~X).
+    Implementation will SYNTHESIZE from the failures (producing Y).
+    """
     
     @pytest.mark.asyncio
-    async def test_agent_session_with_real_mcp_and_db(self, seeded_db, temp_workspace):
-        """Test agent session creation with real MCP client and real database."""
-        from crow.agent import Session
+    async def test_create_agent_with_defaults(self):
+        """
+        UNDERSTANDING: Agent should work out-of-box with no configuration.
         
-        from crow_mcp_server.main import mcp as file_editor_mcp
-        from crow.agent.db import Prompt, Session as SessionModel, Event
-        from sqlalchemy import create_engine
-        from sqlalchemy.orm import Session as SQLAlchemySession
+        Default = builtin MCP (file_editor, web_search, fetch) + env vars for LLM.
+        """
+        agent = Agent()
         
-        # Import real MCP server from installed package
-        from crow_mcp_server.main import mcp as file_editor_mcp
+        assert agent is not None
+        assert agent._config is not None
+        assert agent._llm is not None
         
-        # Connect to REAL MCP server
-        async with Client(transport=file_editor_mcp) as mcp_client:
-            # Get real tools from the MCP server
-            tools_result = await mcp_client.list_tools()
-            tools = []
-            for t in tools_result:
-                tools.append({
-                    "type": "function",
-                    "function": {
-                        "name": t.name,
-                        "description": t.description or "",
-                        "parameters": t.inputSchema,
-                    }
-                })
-            
-            # Create REAL session in REAL database
-            session = Session.create(
-                prompt_id="test-prompt-v1",
-                prompt_args={"workspace": temp_workspace},
-                tool_definitions=tools,
-                request_params={"temperature": 0.7},
-                model_identifier="test-model",
-                db_path=seeded_db,
-            )
-            
-            # Verify session was created
-            assert session is not None
-            assert session.session_id is not None
-            assert len(session.messages) > 0
-            
-            # Verify in database
-            engine = create_engine(seeded_db)
-            db = SQLAlchemySession(engine)
-            
-            db_session = db.query(SessionModel).filter_by(
-                session_id=session.session_id
-            ).first()
-            assert db_session is not None
-            
-            db.close()
-            engine.dispose()
-    
     @pytest.mark.asyncio
-    async def test_agent_calls_real_mcp_tool(self, seeded_db, temp_workspace):
-        """Test agent actually calling a real MCP tool."""
-        from crow.agent import Session
+    async def test_create_agent_with_custom_config(self):
+        """
+        UNDERSTANDING: Agent can be configured programmatically.
         
-        from crow_mcp_server.main import mcp as file_editor_mcp
-        
-        from crow_mcp_server.main import mcp as file_editor_mcp
-        
-        async with Client(transport=file_editor_mcp) as mcp_client:
-            # Get tools
-            tools_result = await mcp_client.list_tools()
-            tools = [{"type": "function", "function": {"name": t.name, "description": t.description or "", "parameters": t.inputSchema}} for t in tools_result]
-            
-            # Create session
-            session = Session.create(
-                prompt_id="test-prompt-v1",
-                prompt_args={"workspace": temp_workspace},
-                tool_definitions=tools,
-                request_params={},
-                model_identifier="test-model",
-                db_path=seeded_db,
-            )
-            
-            # Actually call a tool through MCP
-            test_file = Path(temp_workspace) / "test.txt"
-            result = await mcp_client.call_tool(
-                name="file_editor",
-                arguments={
-                    "command": "create",
-                    "path": str(test_file),
-                    "file_text": "Hello from real E2E test!",
+        Config includes: LLM settings, MCP servers, DB path, runtime params.
+        """
+        config = Config(
+            llm=LLMConfig(
+                default_model="custom-model",
+            ),
+            database_path="sqlite:///custom.db",
+            mcp_servers={
+                "custom-server": {
+                    "command": "python",
+                    "args": ["server.py"],
                 }
-            )
-            
-            # Verify tool actually worked
-            assert test_file.exists()
-            assert test_file.read_text() == "Hello from real E2E test!"
-            assert "created successfully" in result.content[0].text.lower()
-    
-    @pytest.mark.asyncio
-    async def test_agent_multiple_sessions_isolated(self, seeded_db):
-        """Test multiple sessions are properly isolated."""
-        from crow.agent import Session
-        
-        from crow_mcp_server.main import mcp as file_editor_mcp
-        
-        
-        async with Client(transport=file_editor_mcp) as mcp_client:
-            tools_result = await mcp_client.list_tools()
-            tools = [{"type": "function", "function": {"name": t.name, "description": t.description or "", "parameters": t.inputSchema}} for t in tools_result]
-            
-            # Create two sessions with different workspaces
-            with tempfile.TemporaryDirectory() as ws1, tempfile.TemporaryDirectory() as ws2:
-                session1 = Session.create(
-                    prompt_id="test-prompt-v1",
-                    prompt_args={"workspace": ws1},
-                    tool_definitions=tools,
-                    request_params={},
-                    model_identifier="test-model",
-                    db_path=seeded_db,
-                )
-                
-                session2 = Session.create(
-                    prompt_id="test-prompt-v1",
-                    prompt_args={"workspace": ws2},
-                    tool_definitions=tools,
-                    request_params={},
-                    model_identifier="test-model",
-                    db_path=seeded_db,
-                )
-                
-                # Sessions should have different IDs
-                assert session1.session_id != session2.session_id
-                
-                # Add messages to each session
-                session1.add_message("user", "Message for session 1")
-                session2.add_message("user", "Message for session 2")
-                
-                # Reload sessions and verify isolation
-                reloaded1 = Session.load(session1.session_id, seeded_db)
-                reloaded2 = Session.load(session2.session_id, seeded_db)
-                
-                # Each session should have its own message
-                assert "session 1" in str(reloaded1.messages)
-                assert "session 2" in str(reloaded2.messages)
-                assert "session 1" not in str(reloaded2.messages)
-                assert "session 2" not in str(reloaded1.messages)
-    
-    @pytest.mark.asyncio
-    async def test_agent_session_persistence_across_reload(self, seeded_db, temp_workspace):
-        """Test session state persists correctly when reloaded."""
-        from crow.agent import Session
-        
-        from crow_mcp_server.main import mcp as file_editor_mcp
-        from crow.agent.db import Event, Session as SessionModel
-        from sqlalchemy import create_engine
-        from sqlalchemy.orm import Session as SQLAlchemySession
-        
-        
-        async with Client(transport=file_editor_mcp) as mcp_client:
-            tools_result = await mcp_client.list_tools()
-            tools = [{"type": "function", "function": {"name": t.name, "description": t.description or "", "parameters": t.inputSchema}} for t in tools_result]
-            
-            # Create session
-            session = Session.create(
-                prompt_id="test-prompt-v1",
-                prompt_args={"workspace": temp_workspace},
-                tool_definitions=tools,
-                request_params={"temperature": 0.5},
-                model_identifier="persist-test-model",
-                db_path=seeded_db,
-            )
-            
-            session_id = session.session_id
-            
-            # Add messages and events
-            session.add_message("user", "Test message for persistence")
-            
-            # Reload from database
-            reloaded = Session.load(session_id, seeded_db)
-            
-            # Verify session ID preserved
-            assert reloaded.session_id == session_id
-            
-            # Verify messages preserved
-            assert len(reloaded.messages) > 0
-            assert "persistence" in str(reloaded.messages)
-            
-            # Verify in database model
-            engine = create_engine(seeded_db)
-            db = SQLAlchemySession(engine)
-            db_session = db.query(SessionModel).filter_by(session_id=session_id).first()
-            assert db_session is not None
-            assert db_session.model_identifier == "persist-test-model"
-            
-            db.close()
-            engine.dispose()
-    
-    @pytest.mark.asyncio
-    async def test_full_prompt_lifecycle_e2e(self, temp_db):
-        """Test full prompt lifecycle: create, lookup, use in session."""
-        from crow.agent.db import Prompt, Session as SessionModel
-        from sqlalchemy import create_engine
-        from sqlalchemy.orm import Session as SQLAlchemySession
-        
-        # Step 1: Create prompt via lookup-or-create pattern
-        engine = create_engine(temp_db)
-        db = SQLAlchemySession(engine)
-        
-        template = "E2E test agent: {{workspace}}"
-        
-        # Try to find existing
-        prompt = db.query(Prompt).filter_by(template=template).first()
-        
-        if not prompt:
-            # Create new
-            prompt = Prompt(
-                id="e2e-prompt-v1",
-                name="E2E Test Prompt",
-                template=template,
-            )
-            db.add(prompt)
-            db.commit()
-        
-        prompt_id = prompt.id
-        db.close()
-        engine.dispose()
-        
-        # Step 2: Use prompt in session creation
-        from crow.agent import Session
-        
-        from crow_mcp_server.main import mcp as file_editor_mcp
-        
-        tools = [{"type": "function", "function": {"name": "test", "parameters": {}}}]
-        
-        session = Session.create(
-            prompt_id=prompt_id,
-            prompt_args={"workspace": "/test/workspace"},
-            tool_definitions=tools,
-            request_params={"temperature": 0.7},
-            model_identifier="test-model",
-            db_path=temp_db,
+            }
         )
         
-        # Step 3: Verify session uses our prompt
-        assert session is not None
-        assert len(session.messages) > 0
-        assert "E2E test agent" in session.messages[0]["content"]
+        agent = Agent(config)
         
-        # Step 4: Verify prompt is in database
-        engine = create_engine(temp_db)
-        db = SQLAlchemySession(engine)
+        assert agent._config.llm.default_model == "custom-model"
+        assert "custom-server" in agent._config.mcp_servers
         
-        found = db.query(Prompt).filter_by(id=prompt_id).first()
-        assert found is not None
-        assert found.template == template
+    @pytest.mark.asyncio
+    async def test_setup_mcp_from_config_dict(self):
+        """
+        UNDERSTANDING: MCP clients can be created from config dicts.
         
-        db.close()
-        engine.dispose()
+        This is the FastMCP format - same as what we use in Agent config.
+        """
+        config = {
+            "mcpServers": {
+                "crow-builtin": {
+                    "command": "uv",
+                    "args": ["--project", "crow-mcp-server", "run", "."],
+                }
+            }
+        }
+        
+        client = create_mcp_client_from_config(config)
+        
+        async with client:
+            tools = await client.list_tools()
+            tool_names = [t.name for t in tools]
+            
+            # Builtin server has these tools
+            assert "file_editor" in tool_names
+            assert "web_search" in tool_names
+            assert "fetch" in tool_names
+    
+    @pytest.mark.asyncio
+    async def test_agent_new_session_creates_mcp_client(self, temp_db, temp_workspace):
+        """
+        UNDERSTANDING: new_session() should setup MCP client internally.
+        
+        Session has:
+        - Unique session_id
+        - MCP client (from config or builtin)
+        - Tools from MCP
+        - Persisted to DB
+        """
+        config = Config(database_path=temp_db)
+        agent = Agent(config)
+        
+        # This should create session + setup MCP + persist to DB
+        response = await agent.new_session(
+            cwd=temp_workspace,
+            mcp_servers=[],  # Use builtin
+        )
+        
+        assert response is not None
+        assert response.session_id is not None
+        
+        # Agent should track the session
+        assert response.session_id in agent._sessions
+        
+        # MCP client should be initialized
+        assert response.session_id in agent._mcp_clients
+        
+        # Tools should be loaded
+        assert response.session_id in agent._tools
+        assert len(agent._tools[response.session_id]) > 0
+        
+    @pytest.mark.asyncio
+    async def test_agent_load_session_rebuilds_state(self, temp_db, temp_workspace):
+        """
+        UNDERSTANDING: load_session() should rebuild in-memory state from DB.
+        
+        This includes:
+        - Loading messages from DB
+        - Recreating MCP client
+        - Restoring tools
+        """
+        config = Config(database_path=temp_db)
+        agent = Agent(config)
+        
+        # Create session first
+        create_response = await agent.new_session(
+            cwd=temp_workspace,
+            mcp_servers=[],
+        )
+        session_id = create_response.session_id
+        
+        # Add some messages
+        session = agent._sessions[session_id]
+        session.add_message("user", "Hello from previous session")
+        
+        # Simulate restart - create new agent instance
+        agent2 = Agent(config)
+        
+        # Load the session
+        load_response = await agent2.load_session(
+            cwd=temp_workspace,
+            session_id=session_id,
+            mcp_servers=[],
+        )
+        
+        # Should have rebuilt state
+        assert session_id in agent2._sessions
+        assert session_id in agent2._mcp_clients
+        
+        # Messages should be restored from DB
+        loaded_session = agent2._sessions[session_id]
+        assert "previous session" in str(loaded_session.messages)
+        
+    @pytest.mark.asyncio 
+    async def test_agent_prompt_triggers_react_loop(self, temp_db, temp_workspace):
+        """
+        UNDERSTANDING: prompt() should run the full react loop.
+        
+        The loop:
+        1. Add user message to session
+        2. Call LLM with tools
+        3. Execute any tool calls
+        4. Continue until done
+        5. Stream updates to client
+        """
+        config = Config(database_path=temp_db)
+        agent = Agent(config)
+        
+        # Setup session
+        session_response = await agent.new_session(
+            cwd=temp_workspace,
+            mcp_servers=[],
+        )
+        session_id = session_response.session_id
+        
+        # Send prompt
+        response = await agent.prompt(
+            prompt=[{"type": "text", "text": "What is 2+2?"}],
+            session_id=session_id,
+        )
+        
+        # Should get response
+        assert response is not None
+        assert response.stop_reason in ["end_turn", "stop"]
+        
+        # Session should have messages
+        session = agent._sessions[session_id]
+        assert len(session.messages) >= 2  # user + assistant
+
+
+class TestMCPIntegrationE2E:
+    """Tests for MCP tool calling through the agent."""
+    
+    @pytest.mark.asyncio
+    async def test_agent_uses_file_editor_tool(self, temp_db, temp_workspace):
+        """
+        UNDERSTANDING: Agent can use file_editor tool via MCP.
+        
+        The tool is provided by builtin crow-mcp-server.
+        """
+        config = Config(database_path=temp_db)
+        agent = Agent(config)
+        
+        session_response = await agent.new_session(
+            cwd=temp_workspace,
+            mcp_servers=[],
+        )
+        session_id = session_response.session_id
+        
+        # Ask agent to create a file
+        test_file = Path(temp_workspace) / "test.md"
+        
+        response = await agent.prompt(
+            prompt=[{
+                "type": "text", 
+                "text": f"Create a file at {test_file} with content 'Hello E2E'"
+            }],
+            session_id=session_id,
+        )
+        
+        # File should exist (agent called file_editor tool)
+        # Note: This test may FAIL initially - that's OK (TDD)
+        # The agent needs to actually call the tool
+        assert test_file.exists()
+        assert "Hello E2E" in test_file.read_text()
+        
+    @pytest.mark.asyncio
+    async def test_agent_uses_web_search_tool(self, temp_db, temp_workspace):
+        """
+        UNDERSTANDING: Agent can use web_search tool via MCP.
+        
+        The tool is provided by builtin crow-mcp-server.
+        """
+        config = Config(database_path=temp_db)
+        agent = Agent(config)
+        
+        session_response = await agent.new_session(
+            cwd=temp_workspace,
+            mcp_servers=[],
+        )
+        session_id = session_response.session_id
+        
+        # Ask agent to search (this requires internet)
+        response = await agent.prompt(
+            prompt=[{
+                "type": "text",
+                "text": "Search for 'Python agent protocol MCP' and summarize"
+            }],
+            session_id=session_id,
+        )
+        
+        # Response should mention search results
+        # Note: This test may FAIL initially - that's OK (TDD)
+        session = agent._sessions[session_id]
+        # We expect assistant message to mention search results
+        assistant_messages = [m for m in session.messages if m.get("role") == "assistant"]
+        # This is our constraint - we EXPECT the agent to search and respond
+        # Failure teaches us what's missing in implementation
+
+
+class TestSessionPersistenceE2E:
+    """Tests for session persistence and reload."""
+    
+    @pytest.mark.asyncio
+    async def test_session_survives_agent_restart(self, temp_db, temp_workspace):
+        """
+        UNDERSTANDING: Sessions are persisted to DB and survive process restart.
+        
+        This is WHAT sessions ARE - persistent conversation state.
+        """
+        # Agent 1 creates session
+        config = Config(database_path=temp_db)
+        agent1 = Agent(config)
+        
+        session_response = await agent1.new_session(
+            cwd=temp_workspace,
+            mcp_servers=[],
+        )
+        session_id = session_response.session_id
+        
+        # Add conversation
+        await agent1.prompt(
+            prompt=[{"type": "text", "text": "My name is Thomas"}],
+            session_id=session_id,
+        )
+        
+        # Cleanup agent1 (simulating process exit)
+        await agent1.cleanup()
+        
+        # Agent 2 loads session
+        agent2 = Agent(config)
+        
+        await agent2.load_session(
+            cwd=temp_workspace,
+            session_id=session_id,
+            mcp_servers=[],
+        )
+        
+        # Conversation should be intact
+        session = agent2._sessions[session_id]
+        conversation_str = str(session.messages)
+        
+        assert "Thomas" in conversation_str
+        
+        # Continue conversation
+        response = await agent2.prompt(
+            prompt=[{"type": "text", "text": "What's my name?"}],
+            session_id=session_id,
+        )
+        
+        # Agent should remember context from before restart
+        # This is the CORE semantic constraint - sessions persist

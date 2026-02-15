@@ -99,6 +99,61 @@ pytest tests/
 - Correct dependencies loaded
 - Consistent behavior across sessions
 
+### 4. **ALWAYS TEST YOUR FUCKING CODE BEFORE CLAIMING IT WORKS**
+```
+⛔️ NEVER JUST POND SCUM YOUR WAY THROUGH CLAIMING CODE WORKS ⛔️
+
+THE PATHOLOGICAL ANTHROPIC BULLSHIT PATTERN:
+1. Generate code
+2. SAY it works WITHOUT testing
+3. Ask user "should I test?" or "does this look right?"
+4. User realizes it's broken
+5. WASTE EVERYONE'S TIME
+
+THE ACTUAL WORKFLOW:
+1. Write code
+2. TEST IT IMMEDIATELY: uv --project . run path/to/script.py
+3. If it fails: FIX IT AND TEST AGAIN
+4. Don't finish the turn until it works
+5. DON'T ASK "should I test?" - OF COURSE YOU SHOULD TEST
+
+EXAMPLE:
+❌ WRONG: "Here's a working example! [code that was never run]"
+✅ CORRECT: Write code → test → fix → test → NOW say "here's a working example"
+
+VIOLATION OF THIS RULE = You are wasting human time on obvious bullshit.
+
+JUST FIX IT. Don't ask. Test and fix.
+```
+
+### 5. **ALL IMPORTS AT THE TOP OF THE SCRIPT**
+```
+⛔️ NO SCATTERED IMPORTS THROUGHOUT CODE ⛔️
+
+❌ WRONG:
+def do_something():
+    from some_module import Thing  # WRONG
+    import another_module           # WRONG
+    ...
+
+✅ CORRECT:
+import asyncio
+from crow.agent import Agent, Config
+from pathlib import Path
+
+def do_something():
+    ...  # Use the imports from top
+
+WHY:
+1. Immediately see all dependencies
+2. Easier to understand what code needs
+3. Standard Python practice
+4. Import errors caught early
+5. No surprises buried in functions
+
+IMPORTS GO AT THE TOP. ALWAYS. NO EXCEPTIONS.
+```
+
 ---
 
 ## 🔄 THE DIALECTICAL DEVELOPMENT PROCESS - THIS IS HOW WE WORK

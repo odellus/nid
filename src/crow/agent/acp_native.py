@@ -136,9 +136,11 @@ class Agent(ACPAgent):
         """
         logger.info("Creating new session in cwd: %s", cwd)
         
-        # Use builtin MCP server from config
-        mcp_config = self._config.get_builtin_mcp_config()
-        mcp_client = await create_mcp_client_from_config(mcp_config)
+        # Use default MCP config if no servers provided
+        fallback_config = self._config.get_builtin_mcp_config() if not mcp_servers else None
+        
+        # Create MCP client (builtin if no servers provided)
+        mcp_client = await create_mcp_client_from_acp(mcp_servers, fallback_config=fallback_config)
         
         # CRITICAL: Use AsyncExitStack for lifecycle management
         mcp_client = await self._exit_stack.enter_async_context(mcp_client)
@@ -152,7 +154,7 @@ class Agent(ACPAgent):
             prompt_args={"workspace": cwd},
             tool_definitions=tools,
             request_params={"temperature": 0.7},
-            model_identifier=self._config.default_model,
+            model_identifier=self._config.llm.default_model,
             db_path=self._db_path,
         )
         
@@ -179,8 +181,12 @@ class Agent(ACPAgent):
             session = Session.load(session_id, db_path=self._db_path)
             
             # Setup MCP client (same as new_session)
-            mcp_config = self._config.get_builtin_mcp_config()
-            mcp_client = await create_mcp_client_from_config(mcp_config)
+            # Use default config if no servers provided
+            fallback_config = self._config.get_builtin_mcp_config() if not mcp_servers else None
+            if fallback_config:
+                mcp_client = await create_mcp_client_from_acp([], fallback_config=fallback_config)
+            else:
+                mcp_client = await create_mcp_client_from_acp(mcp_servers)
             
             # CRITICAL: Use AsyncExitStack for lifecycle management
             mcp_client = await self._exit_stack.enter_async_context(mcp_client)

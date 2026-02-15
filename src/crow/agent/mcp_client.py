@@ -17,15 +17,15 @@ logger = logging.getLogger(__name__)
 
 
 async def create_mcp_client_from_acp(
-    mcp_servers: list[HttpMcpServer | SseMcpServer | McpServerStdio]
+    mcp_servers: list[HttpMcpServer | SseMcpServer | McpServerStdio],
+    fallback_config: dict[str, Any] | None = None
 ) -> MCPClient:
     """
     Create an MCP client from ACP MCP server configurations.
     
-    If no servers are provided, use the builtin crow-mcp-server.
-    
     Args:
         mcp_servers: List of MCP server configurations from ACP client
+        fallback_config: FastMCP config dict to use if mcp_servers is empty
         
     Returns:
         FastMCP Client instance
@@ -45,11 +45,13 @@ async def create_mcp_client_from_acp(
         ...     tools = await client.list_tools()
     """
     if not mcp_servers:
-        # No servers provided - use builtin crow-mcp-server (in-memory for performance)
-        # Import from installed package (NO sys.path bullshit)
-        logger.info("No MCP servers provided, using builtin crow-mcp-server")
-        from crow_mcp_server.main import mcp as builtin_mcp
-        return MCPClient(builtin_mcp)
+        if fallback_config is None:
+            raise ValueError(
+                "No MCP servers provided and no fallback config available. "
+                "MCP servers must be provided either via ACP protocol or fallback_config."
+            )
+        logger.info("No MCP servers provided, using fallback config")
+        return MCPClient(fallback_config)
     
     # Convert ACP format to FastMCP config dict
     logger.info(f"Creating FastMCP client from {len(mcp_servers)} ACP servers")
