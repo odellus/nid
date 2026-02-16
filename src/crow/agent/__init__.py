@@ -19,10 +19,8 @@ from .config import Config, LLMConfig, get_default_config, get_config_dir
 
 # Import extension system
 from .extensions import (
-    Extension,
     ExtensionContext,
     HookRegistry,
-    get_current_agent,
 )
 
 __all__ = [
@@ -45,8 +43,6 @@ __all__ = [
     "get_default_config",
     "get_config_dir",
     # Extension system
-    "Extension",
     "ExtensionContext",
     "HookRegistry",
-    "get_current_agent",
 ]

@@ -6,8 +6,51 @@
 
 ![mcp-framework](./docs/img/whiteboard_capture.png)
 
-The `crow` package is the core agent runtime for Crow AI - a frameworkless agent framework connecting FastMCP and Agent Client Protocol.
+The `crow` monorepo is a Python-native agent framework connecting FastMCP and Agent Client Protocol.
 
+## Monorepo Structure
+
+```
+crow/
+├── crow-agent/         # Programmatic SDK for long-running workflows w/custom extensions
+├── crow-compact/       # Post-response callback to check token threshold
+├── crow-core/          # ACP native react agent w/MCP + chat + extension system
+├── crow-mcp-server/    # Built-in MCP tools (file_editor, web_search, fetch)
+├── crow-persistence/   # Post-response hook to save session to DB
+├── crow-skills/        # Pre-request callback to inject filesystem context
+└── pyproject.toml      # Workspace configuration (uv workspace members)
+```
+
+## Key Features
+
+- **ACP-Native**: Implements Agent Client Protocol directly
+- **MCP Integration**: Connects to FastMCP servers for tools
+- **Extension System**: Flask-inspired hooks/callbacks for extensibility
+- **Monorepo**: Clean package boundaries with independent installability
+
+### ACP Protocol Understanding
+
+From `uv --project . run python -c "import acp"`:
+
+**SessionInfo** - The source of truth:
+- `sessionId` - Unique identifier (REQUIRED)
+- `cwd` - Working directory (REQUIRED, must be absolute path)
+- `title` - Human-readable title (optional)
+- `updatedAt` - ISO 8601 timestamp (optional)
+- `_meta` - Custom metadata (reserved by ACP)
+
+**Update Types** - Agent communicates via `session/update`:
+- `"plan"` → AgentPlanUpdate (execution plan)
+- `"user_message_chunk"` → User's message
+- `"agent_message_chunk"` → Agent's response
+- `"tool_call"` → Tool call started
+- `"tool_call_update"` → Tool call progress/status
+- `"usage_update"` → Token usage/cost info
+
+**Tool Call Content Types** - How to display outputs:
+- `"content"` → Text/image/audio
+- `"diff"` → **Show diff UI** (file edits)
+- `"terminal"` → **Show terminal UI**
 
 Basically the idea is that we can use FastMCP as our tool calling framework in the exact same way we are going to use Agent Client Protocol to communicate with the frontend.
 
@@ -228,12 +271,48 @@ if __name__ == "__main__":
 
 and we've also added a persistent database to store the conversation. Now we really just need to wrap the emitted token to status_updates for ACP and we're in business.  I would build more on our existing work with [`crow`](https://github.com/odellus/crow), but we've basically got to reimplement the entire thing from scratch now lol. That's what getting rid of openhands means.
 
+## Current Status
 
+**Status**: 85% Complete - Core architecture working
 
-# TO DO
-- session management and persistence to sqlite through sqlalchemy
+See `IMPLEMENTATION_PLAN.md` for detailed status and `PULSE_CHECK.md` for comprehensive analysis.
+
+## Monorepo Transition
+
+We're currently in the process of transitioning from a single-package structure to a monorepo with clean package boundaries:
+
+**Current**: Single `src/crow/agent/` package with `crow-mcp-server/` as a dependency
+
+**Target**: Monorepo with root-level packages:
+- `crow-agent/` - Programmatic SDK for long-running workflows
+- `crow-compact/` - Post-response token threshold checker
+- `crow-core/` - ACP native react agent
+- `crow-mcp-server/` - Built-in MCP tools
+- `crow-persistence/` - Session persistence hook
+- `crow-skills/` - Context injection via skills
+
+See `docs/essays/10-monorepo-refactor-to-avoid-cyclic-dependencies.md` for detailed analysis.
+
+## Key Features
+
+- **ACP-Native**: Implements Agent Client Protocol directly
+- **MCP Integration**: Connects to FastMCP servers for tools
+- **Extension System**: Flask-inspired hooks/callbacks for extensibility
+- **Monorepo**: Clean package boundaries with independent installability
+
+## Documentation
+
+- `AGENTS.md` - Development patterns and best practices
+- `IMPLEMENTATION_PLAN.md` - Current status and next steps
+- `docs/essays/` - Detailed architecture decisions and analysis
+- `PULSE_CHECK.md` - Comprehensive status analysis
+
+## TO DO
+
+- session management and persistence to sqlite through sqlalchemy ✅ (done)
 - compaction
 - prompt management — proper, with version and input variables all stored in memory every time a new prompt is created or rendered (we refer back to versioned prompt, which is crucial for evaluation)
 - skills — part of prompt management, we need to do a keyword check for skills and insert the necessary progressive disclosure around the skill into the context after the user's request.
-- agent client protocol and we mean the whole thing
+- agent client protocol and we mean the whole thing ✅ (mostly done)
+- monorepo refactor - transition to clean package boundaries
 - CLI is going to be in crow we've already got that sorted out this is just going to drop down where openhands and the acp used to be because instead of having an openhands sdk and then a whole big acp we'll just be able to use `crow`'s built in ACP because that's the thing about it being a frameworkless framework of minimal non-extensions built between two protocols that's basically the ACP and openai chat completion sdk's minimal spanning set right?

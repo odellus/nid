@@ -574,3 +574,330 @@ The remaining 15% is cleanup and nice-to-have features:
 **The system is functional and being used. The foundation is solid.**
 
 **See PULSE_CHECK.md for full ACP spec coverage analysis.**
+
+---
+
+## 🎯 Goal 8: Monorepo Refactor for Clean Package Boundaries
+
+### Status: 🟡 **PLANNED** (NOT YET IMPLEMENTED)
+
+**Date**: February 15, 2026  
+**Status**: Documentation phase - ready to implement
+
+### Current State
+
+```
+Current Structure (WORKING):
+mcp-testing/
+├── src/crow/agent/          # Core agent (ACP-native, react loop, etc.)
+│   ├── acp_native.py
+│   ├── extensions.py
+│   └── ...
+├── crow-mcp-server/         # MCP tools (file_editor, web_search, fetch)
+│   ├── crow_mcp_server/
+│   └── pyproject.toml      # ✅ Already has its own pyproject.toml!
+├── pyproject.toml           # Has workspace config for crow-mcp-server
+└── uv.lock
+```
+
+**Current state analysis**:
+- ✅ crow-mcp-server has its own pyproject.toml (already a separate package)
+- ✅ Root pyproject.toml has uv.workspace configured
+- ✅ crow-mcp-server is in workspace members
+- ❌ src/crow/agent is NOT in workspace (it's just a regular package)
+
+### Target State
+
+```
+Target Structure (CLEAR BOUNDARIES):
+mcp-testing/
+├── crow-agent/              # Programmatic SDK for long-running workflows
+│   ├── crow/
+│   └── pyproject.toml       # Can be installed independently: pip install crow-agent
+├── crow-compact/            # Post-response token threshold checker
+│   ├── crow_compact/
+│   └── pyproject.toml       # Can be installed independently: pip install crow-compact
+├── crow-core/               # ACP native react agent
+│   ├── crow/
+│   └── pyproject.toml       # Can be installed independently: pip install crow-core
+├── crow-mcp-server/         # Built-in MCP tools
+│   ├── crow_mcp_server/
+│   └── pyproject.toml       # Already exists ✅
+├── crow-persistence/        # Session persistence hook
+│   ├── crow_persistence/
+│   └── pyproject.toml       # New package
+├── crow-skills/             # Context injection via skills
+│   ├── crow_skills/
+│   └── pyproject.toml       # New package
+├── pyproject.toml           # Workspace configuration (uv workspace members)
+└── uv.lock                  # Shared dependency lock
+```
+
+### Why This Matters
+
+1. **Each package independently installable** - `pip install crow-agent`, `pip install crow-persistence`, etc.
+2. **Clear package boundaries** - Each package has a single responsibility
+3. **No cyclic dependencies** - Packages don't import each other unnecessarily
+4. **Follows industry best practices** - Like `refs/software-agent-sdk` and `agent-client-protocol`
+5. **Future-proof** - Easy to add new packages as extensions
+
+### Package Responsibilities
+
+| Package | Responsibility | Key Features |
+|---------|---------------|--------------|
+| `crow-agent` | Programmatic SDK for long-running workflows | Custom extensions, MCP servers, ACP exposure |
+| `crow-compact` | Post-response token threshold checker | Check if request+response > threshold |
+| `crow-core` | ACP native react agent | MCP tool calling + chat/completions + extension system |
+| `crow-mcp-server` | Built-in MCP tools | file_editor, web_search, fetch |
+| `crow-persistence` | Post-response session persistence | Save session info to SQL table |
+| `crow-skills` | Pre-request context injection | Conditional filesystem context via skills |
+
+### Implementation Steps
+
+1. **Create package directories** - Create root-level directories for each package
+2. **Set up pyproject.toml files** - Each package has its own pyproject.toml
+3. **Configure workspace** - Update root pyproject.toml with uv workspace members
+4. **Migrate code** - Move src/crow/agent to crow-core/, etc.
+5. **Update imports** - Fix all imports to use new package structure
+6. **Test** - Verify each package works independently and together
+
+### Related Documentation
+
+- `docs/essays/10-monorepo-refactor-to-avoid-cyclic-dependencies.md` - Detailed monorepo analysis
+- `AGENTS.md` - Monorepo vision and design principles
+- `refs/software-agent-sdk/` - Reference monorepo structure
+
+### Success Criteria
+
+- ✅ Each package has its own pyproject.toml
+- ✅ Each package can be installed independently
+- ✅ Root pyproject.toml has uv workspace configuration
+- ✅ No cyclic dependencies between packages
+- ✅ All tests pass with new structure
+- ✅ Documentation updated
+
+---
+
+## 🎯 Goal 9: ACP/MCP Interop via Tool Call Content Types
+
+### Status: 🟡 **PLANNED** (NOT YET IMPLEMENTED)
+
+**Date**: February 15, 2026  
+**Status**: Documentation phase - ready to implement
+
+### Understanding ACP Tool Call Content
+
+From `uv --project . run python -c "import acp.helpers; print(acp.helpers.tool_diff_content(...))"`:
+
+The ACP protocol uses **tool call content types** to tell the client how to display tool outputs:
+
+| type | Content Type | Client Display |
+|------|--------------|----------------|
+| `"content"` | ContentToolCallContent | Text/image/audio content |
+| `"diff"` | FileEditToolCallContent | **Show diff UI** (file edits) |
+| `"terminal"` | TerminalToolCallContent | **Show terminal UI** |
+
+### How It Works
+
+1. **Agent creates tool call** with appropriate content type:
+```python
+import acp.helpers
+
+# For file edits - shows diff UI
+tool_call = acp.helpers.start_edit_tool_call(
+    title="Edit file",
+    path="test.py",
+    content=acp.helpers.tool_diff_content("test.py", "new content", "old content")
+)
+
+# For terminal output - shows terminal UI  
+tool_call = acp.helpers.start_tool_call(
+    title="Run command",
+    content=acp.helpers.tool_terminal_ref("term_123")
+)
+```
+
+2. **Client receives tool call** with `type` field telling it how to render
+
+3. **Client renders appropriately**:
+   - `"diff"` → Shows side-by-side diff UI
+   - `"terminal"` → Shows terminal UI
+   - `"content"` → Shows plain content
+
+### Implementation Steps
+
+1. Update MCP tools to return content with appropriate `type` field
+2. Use `acp.helpers.tool_diff_content()` for file_editor
+3. Use `acp.helpers.tool_terminal_ref()` for terminal tool
+4. Use `acp.helpers.tool_content()` with `text_block()` for other tools
+
+### Key Insight
+
+**The `type` field IS the "fixture/config"** - it's built into the ACP schema, not something we need to add separately. The ACP protocol already has this mechanism built-in!
+
+### Priority: Use ACP Native Features
+
+When ACP client has native terminal, use it instead of MCP:
+
+```python
+# crow-core/agent.py
+class Agent:
+    def __init__(self, mcp_servers: List[MCPConfig], use_acp_terminal: bool = True):
+        self.mcp_servers = mcp_servers
+        self.use_acp_terminal = use_acp_terminal  # NEW!
+    
+    async def call_tool(self, tool_name: str, args: dict):
+        # Priority: ACP terminal > MCP terminal
+        if tool_name == "terminal" and self.use_acp_terminal:
+            # Use ACP native terminal
+            return await self.acp_client.create_terminal(...)
+        else:
+            # Use MCP tool
+            return await self.mcp_client.call_tool(tool_name, args)
+```
+
+### Implementation Steps
+
+1. Define fixture/config system for MCP tools
+2. Add fixtures to existing MCP tools
+3. Implement ACP terminal priority logic
+4. Test with real ACP clients
+
+---
+
+## 🎯 Goal 10: Everything is an Extension
+
+### Status: 🟡 **PLANNED** (NOT YET IMPLEMENTED)
+
+**Date**: February 15, 2026  
+**Status**: Documentation phase - ready to implement
+
+### Vision
+
+**Everything should be an extension/callback** - hooks at key points in the agent flow:
+
+```
+Agent Flow with Extensions:
+├── pre_request (skills, context injection)
+├── mid_react (compaction, token threshold checks)
+├── post_react_loop (session state updates)
+└── post_request (persistence, logging)
+```
+
+### Extension Points
+
+| Hook Point | Purpose | Example Extensions |
+|------------|---------|-------------------|
+| `pre_request` | Before user request processed | Skills, context injection |
+| `mid_react` | During react loop | Compaction, token checks |
+| `post_react_loop` | After react loop completes | Session updates |
+| `post_request` | After request complete | Persistence, logging |
+
+### Extension Pattern
+
+**Flask-inspired**: Extensions receive direct references to agent:
+
+```python
+class MyExtension:
+    def __init__(self, agent=None):
+        self.agent = agent
+        if agent is not None:
+            self.init_app(agent)
+    
+    def init_app(self, agent):
+        # Register hooks
+        agent.hooks.register_hook("pre_request", self.pre_request)
+        # Store reference
+        agent.extensions['my_extension'] = self
+    
+    async def pre_request(self, ctx: ExtensionContext):
+        # Access agent directly - it's all just Python!
+        agent = ctx.agent
+        # ... do anything the agent can do ...
+```
+
+**No context variables needed. No complex abstractions. Just Python code.**
+
+### Implementation Steps
+
+1. Implement HookRegistry class
+2. Add hook points to Agent class
+3. Migrate existing features to extensions
+4. Document extension API
+5. Publish example extensions
+
+### Related Documentation
+
+- `src/crow/agent/extensions.py` - Extension system implementation
+- `docs/essays/04-hooks-as-first-class-citizens.md` - Hook design philosophy
+- `docs/essays/05-hook-design-analysis.md` - Detailed hook architecture
+
+---
+
+## 🎯 Goal 11: ACP Session State as Agent State
+
+### Status: 🟡 **PLANNED** (NOT YET IMPLEMENTED)
+
+**Date**: February 15, 2026  
+**Status**: Documentation phase - ready to implement
+
+### Vision
+
+**The state of the ACP session should be the state of the agent**:
+
+```
+ACP Session ↔ Agent State
+──────────────────────────
+sessionId ↔ Session ID
+cwd ↔ Working directory
+mcpServers ↔ MCP clients
+session info ↔ Agent state
+```
+
+### ACP Session Info
+
+```python
+# From ACP schema
+SessionInfo = {
+    "sessionId": str,      # Unique identifier
+    "cwd": str,           # Working directory
+    "title": str | None,  # Human-readable title
+    "updatedAt": str | None,  # ISO 8601 timestamp
+    "_meta": dict | None  # Custom metadata
+}
+```
+
+### Implementation Steps
+
+1. Store ACP session info in agent state
+2. Sync session state with database
+3. Use session info for persistence/reload
+4. Implement session fork/resume if needed
+
+### Related Documentation
+
+- `docs/essays/03-session-persistence.md` - Session persistence design
+- `src/crow/agent/session.py` - Session implementation
+- `agent-client-protocol/python-sdk` - ACP session schema
+
+---
+
+## Conclusion
+
+**Overall Status: 85% Complete - Ready for Basic Usage**
+
+The core architecture is complete and working:
+- ✅ Merged agent follows ACP patterns
+- ✅ Protocol compliance for core methods
+- ✅ MCP configuration via ACP (user's use case works!)
+- ✅ Session persistence and reload
+- ✅ Resource management verified
+- ✅ Strong test coverage (100 passing, no mocks)
+
+**The remaining work is about organization, extensibility, and polish**:
+- Monorepo refactor (clean package boundaries)
+- ACP/MCP interop (fixtures for display)
+- Everything is an extension (hooks/callbacks)
+- ACP session state as agent state
+
+**The foundation is solid. The vision is clear. Let's build it.**

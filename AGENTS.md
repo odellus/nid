@@ -6,20 +6,29 @@ This document captures patterns, anti-patterns, and best practices learned throu
 
 ## 🔴🔴🔴 THE VISION - WHAT WE'RE BUILDING 🔴🔴🔴
 
-### The Crow Ecosystem
+### The Crow Monorepo
 
 We're building a **Python-native, open-source agent framework** where extensions are just Python code:
 
 ```
-Crow Ecosystem
-├── crow-core          # Core agent with MCP integration
-├── crow-ext           # Extension framework (hooks/callbacks)
-├── crow-agent         # Built-in extensions bundled together
-├── crow-persistence   # Session persistence to database
-├── crow-compact       # Token compression mid-react
-├── crow-skills        # Context injection via skills
-└── crow-mcp-server    # Built-in MCP tools (file_editor, web_search, fetch)
+Crow Monorepo (root-level packages)
+├── crow-agent/         # Programmatic SDK for long-running workflows w/custom extensions
+├── crow-compact/       # Post-response callback to check token threshold
+├── crow-core/          # ACP native react agent w/MCP + chat + extension system
+├── crow-mcp-server/    # Built-in MCP tools (file_editor, web_search, fetch)
+├── crow-persistence/   # Post-response hook to save session to DB
+├── crow-skills/        # Pre-request callback to inject filesystem context
+└── pyproject.toml      # Workspace configuration (uv workspace members)
 ```
+
+**Key Design Principles**:
+1. **No cyclic dependencies** - Each package is independently importable
+2. **Code as interface** - Extensions receive direct agent references (Flask pattern)
+3. **ACP protocol understanding**:
+   - SessionInfo is the source of truth (sessionId, cwd, title, updatedAt, _meta)
+   - Update types tell client what kind of update (plan, user_message_chunk, tool_call, etc.)
+   - Tool call content types tell client how to display (content, diff, terminal)
+4. **Priority system** - Use ACP native features when available (e.g., ACP terminal > MCP terminal)
 
 ### The Extension Pattern
 
@@ -131,19 +140,37 @@ from main import mcp
 from crow_mcp_server.main import mcp
 ```
 
-**How to make packages importable:**
+**How to make packages importable (Monorepo Pattern):**
 ```toml
 # In root pyproject.toml
 [tool.uv.workspace]
-members = ["crow-mcp-server"]
+members = [
+    "crow-agent",
+    "crow-compact", 
+    "crow-core",
+    "crow-mcp-server",
+    "crow-persistence",
+    "crow-skills"
+]
 
 [tool.uv.sources]
+crow-agent = { workspace = true }
+crow-compact = { workspace = true }
+crow-core = { workspace = true }
 crow-mcp-server = { workspace = true }
+crow-persistence = { workspace = true }
+crow-skills = { workspace = true }
 
-# In package pyproject.toml
+# In each package pyproject.toml
 [tool.hatch.build.targets.wheel]
 packages = ["package_name"]  # NOT ["."] or ["*"]
 ```
+
+**Why this matters**:
+- ✅ No cyclic dependencies between packages
+- ✅ Each package can be imported independently
+- ✅ Extensions can use any package without import issues
+- ✅ Follows the pattern from refs/software-agent-sdk
 
 ### 2. ALWAYS Use `uv --project .`
 ```bash
