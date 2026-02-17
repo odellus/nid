@@ -15,7 +15,7 @@ import os
 from httpx import AsyncClient
 from pydantic import BaseModel
 
-from crow_mcp.server import mcp
+from crow_mcp.server.main import mcp
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

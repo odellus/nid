@@ -24,7 +24,7 @@ import charset_normalizer
 from binaryornot.check import is_binary
 from cachetools import LRUCache
 
-from crow_mcp.server import mcp
+from crow_mcp.server.main import mcp
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

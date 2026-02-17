@@ -907,4 +907,69 @@ crow-mcp/src/crow_mcp/terminal/
 
 ---
 
+## Part 8: Implementation Reality Check (2026-02-16 Session)
+
+### 8.1 What Actually Happened
+
+**Implementation**: ✅ Done
+- Created all core files (constants, metadata, backend, session, main)
+- Fixed circular import issues
+- Integrated with FastMCP server
+- Tool appears in tool list
+
+**Testing**: ⚠️ **BUFFERING BIT US**
+- Ran `manual_test.py` - saw timeouts, thought it was broken
+- Ran it again with output redirection - **IT ACTUALLY WORKED**
+- The issue: Python's stdout buffering delayed the output
+- Tests were PASSING but we couldn't see it!
+
+### 8.2 The Buffering Lesson
+
+```bash
+# This looked broken (output held in buffer):
+uv run scripts/manual_test.py
+
+# This revealed truth (forced flush on exit):
+uv run scripts/manual_test.py > test_results.txt
+cat test_results.txt  # Holy shit, it worked!
+```
+
+**What we learned**:
+1. Terminal output is buffered
+2. Exit flushes the buffer
+3. Long-running tests need explicit flush or unbuffered output
+4. ALWAYS TEST WITH ACTUAL OUTPUT CAPTURE
+
+### 8.3 Current State
+
+**✅ Working**:
+- PTY terminal initialization
+- Command execution
+- Working directory persistence (cd survives across calls)
+- Environment variable persistence (export survives)
+- Virtual environment activation
+- Terminal reset
+- FastMCP integration
+
+**⚠️ Issues**:
+- PS1 metadata detection maybe not working (30s timeout occurs)
+- BUT tests still pass because output is captured before timeout?
+- Need better logging to see what's happening
+
+**❓ Unknowns**:
+- Is PS1 actually being set in the PTY?
+- Is the regex matching but we don't see it?
+- Why does it timeout if commands complete successfully?
+
+### 8.4 Immediate Next Steps
+
+1. **Fix Logging** - Write to file, not just stderr
+2. **Debug PS1** - Add verbose logging to see what's in buffers
+3. **Add pytest tests** - More structured testing
+4. **Document buffering** - Add note about stdout behavior
+
+---
+
 **Final Thought**: The OpenHands terminal is well-architected and battle-tested. Our job is not to reimplement it from scratch, but to **adapt it** for FastMCP and remove SDK dependencies. Preserve the hard parts (PTY handling, PS1 metadata), simplify the abstractions (no Action/Observation classes), and leverage FastMCP's capabilities.
+
+**Real Final Thought**: NEVER claim something works without actually running it. The buffering incident proved that tests can pass even when we think they're failing. Always capture output to a file to see reality.

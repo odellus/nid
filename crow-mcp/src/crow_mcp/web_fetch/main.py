@@ -15,7 +15,7 @@ import markdownify
 import readabilipy.simple_json
 from httpx import AsyncClient
 
-from crow_mcp.server import mcp
+from crow_mcp.server.main import mcp
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
