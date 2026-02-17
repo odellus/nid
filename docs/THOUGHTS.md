@@ -20,3 +20,6 @@ Agent uses lots of search and articulates understanding, the builds constraints 
 -[x] Session persistence  
 -[x] MCP tools for terminal and file editor taken from openhands
 -[ ] Extensions based on callback handlers at different parts of the react loop
+
+
+## WHAT IS NEXT

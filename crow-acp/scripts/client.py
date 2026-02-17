@@ -102,6 +102,8 @@ def display_text(text: str, color: str = PURPLE, styles: list[str] = []):
 
 
 class ExampleClient(Client):
+    _last_chunk: AgentMessageChunk | AgentThoughtChunk | None = None
+
     async def request_permission(
         self,
         options: list[PermissionOption],
@@ -172,6 +174,24 @@ class ExampleClient(Client):
         **kwargs: Any,
     ) -> None:
         if isinstance(update, AgentMessageChunk):
+            if self._last_chunk is None:
+                self._last_chunk = update
+                # so we've just started and this isn't a reasoning model
+                print(end="\n", flush=True)
+                print("—" * 60, flush=True)
+                print("🤖 Assistant:\n\n", end="", flush=True)
+            # So we basically want to see what the last chunk
+            # type was and compare it to the current chunk type, which we know is an AgentMessageChunk.
+
+            elif isinstance(self._last_chunk, AgentThoughtChunk):
+                # this is interesting, we have shifted from reasoning content to response content
+                # we should update the last chunk
+                self._last_chunk = update
+                # AND NOW THE ENTIRE FUCKING POINT
+                # We want to print a newline and an assistant fixture after the thinking finishes
+                print(end="\n", flush=True)
+                print("—" * 60, flush=True)
+                print("🤖 Assistant:\n\n", end="", flush=True)
             content = update.content
             text: str
             if isinstance(content, TextContentBlock):
@@ -189,6 +209,20 @@ class ExampleClient(Client):
             display_text(text, color=PURPLE_DEEP)
 
         elif isinstance(update, AgentThoughtChunk):
+            if self._last_chunk is None:
+                self._last_chunk = update
+                print(end="\n", flush=True)
+                print("—" * 60, flush=True)
+                print("🧠 Thinking:\n\n", end="", flush=True)
+            # Again, we compare the current chunk type to the last chunk type
+            # and only update the last chunk type if it is different
+            elif isinstance(self._last_chunk, AgentMessageChunk):
+                # this is interesting, we have shifted from response content to reasoning content
+                # we should update the last chunk
+                self._last_chunk = update
+                print(end="\n", flush=True)
+                print("—" * 100, flush=True)
+                print("🧠Thinking:\n\n", end="", flush=True)
             content = update.content
             text: str
             if isinstance(content, TextContentBlock):
@@ -214,7 +248,7 @@ async def read_console(prompt: str) -> str:
 async def interactive_loop(conn: ClientSideConnection, session_id: str) -> None:
     while True:
         try:
-            line = await read_console("> ")
+            line = await read_console(f"\n{DEEP_PURPLE}{BOLD}crow> {RESET}")
         except EOFError:
             break
         except KeyboardInterrupt:

@@ -341,6 +341,7 @@ class AcpAgent(Agent):
             messages=session.messages,
             tools=tools,
             stream=True,
+            parallel_tool_calls=True,
         )
 
     def _process_chunk(
