@@ -44,6 +44,62 @@ from acp.schema import (
     WriteTextFileResponse,
 )
 
+# Colors and styles
+RESET = "\033[0m"
+BOLD = "\033[1m"
+ITALIC = "\033[3m"  # Not all terminals support this
+UNDERLINE = "\033[4m"
+
+# Foreground colors
+RED = "\033[31m"
+GREEN = "\033[32m"
+YELLOW = "\033[33m"
+BLUE = "\033[34m"
+MAGENTA = "\033[35m"
+CYAN = "\033[36m"
+WHITE = "\033[37m"
+
+# Bright variants
+BRIGHT_RED = "\033[91m"
+BRIGHT_GREEN = "\033[92m"
+BRIGHT_YELLOW = "\033[93m"
+BRIGHT_BLUE = "\033[94m"
+BRIGHT_MAGENTA = "\033[95m"
+BRIGHT_CYAN = "\033[96m"
+BRIGHT_WHITE = "\033[97m"
+
+# Dim variants
+DIM_RED = "\033[2m"
+DIM_GREEN = "\033[2m"
+DIM_YELLOW = "\033[2m"
+DIM_BLUE = "\033[2m"
+DIM_MAGENTA = "\033[2m"
+DIM_CYAN = "\033[2m"
+DIM_WHITE = "\033[2m"
+
+# Range of purples
+PURPLE = "\033[35m"
+BRIGHT_PURPLE = "\033[95m"
+DIM_PURPLE = "\033[2m"
+DEEP_PURPLE = "\033[38;5;93m"
+VIOLET = "\033[38;5;129m"
+
+PURPLE_BRIGHT = "\x1b[38;2;180;0;255m"  # Vibrant purple
+PURPLE_MEDIUM = "\x1b[38;2;147;0;211m"  # Medium orchid purple
+PURPLE_DEEP = "\x1b[38;2;138;43;226m"  # Blue-violet
+
+# Usage
+# print(f"{CYAN}{ITALIC}italic cyan text{RESET}", end="", flush=True)
+# print(f"{BRIGHT_GREEN}bright green{RESET}", end="", flush=True)
+
+
+def display_text(text: str, color: str = PURPLE, styles: list[str] = []):
+    output_list = [color] + styles
+    text_list = [text]  # this will be one token?
+    text_list.append(RESET)
+    output_text = "".join(output_list + text_list)
+    print(output_text, end="", flush=True)
+
 
 class ExampleClient(Client):
     async def request_permission(
@@ -115,25 +171,33 @@ class ExampleClient(Client):
         | CurrentModeUpdate,
         **kwargs: Any,
     ) -> None:
-        if not isinstance(update, AgentMessageChunk):
-            return
+        if isinstance(update, AgentMessageChunk):
+            content = update.content
+            text: str
+            if isinstance(content, TextContentBlock):
+                text = content.text
+            elif isinstance(content, ImageContentBlock):
+                text = "<image>"
+            elif isinstance(content, AudioContentBlock):
+                text = "<audio>"
+            elif isinstance(content, ResourceContentBlock):
+                text = content.uri or "<resource>"
+            elif isinstance(content, EmbeddedResourceContentBlock):
+                text = "<resource>"
+            else:
+                text = "<content>"
+            display_text(text, color=PURPLE_DEEP)
 
-        content = update.content
-        text: str
-        if isinstance(content, TextContentBlock):
-            text = content.text
-        elif isinstance(content, ImageContentBlock):
-            text = "<image>"
-        elif isinstance(content, AudioContentBlock):
-            text = "<audio>"
-        elif isinstance(content, ResourceContentBlock):
-            text = content.uri or "<resource>"
-        elif isinstance(content, EmbeddedResourceContentBlock):
-            text = "<resource>"
+        elif isinstance(update, AgentThoughtChunk):
+            content = update.content
+            text: str
+            if isinstance(content, TextContentBlock):
+                text = content.text
+            else:
+                text = "<content>"
+            display_text(text, color=DIM_GREEN, styles=[ITALIC])
         else:
-            text = "<content>"
-
-        print(text, end="", flush=True)
+            display_text(str(update), color=RED, styles=[BOLD])
 
     async def ext_method(self, method: str, params: dict) -> dict:
         raise RequestError.method_not_found(method)

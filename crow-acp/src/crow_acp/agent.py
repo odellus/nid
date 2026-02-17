@@ -17,6 +17,7 @@ from typing import Any
 
 from acp import (
     PROTOCOL_VERSION,
+    Agent,
     AuthenticateResponse,
     InitializeResponse,
     LoadSessionResponse,
@@ -26,8 +27,8 @@ from acp import (
     run_agent,
     text_block,
     update_agent_message,
+    update_agent_thought,
 )
-from acp import Agent as ACPAgent
 from acp.interfaces import Client
 from acp.schema import (
     AgentCapabilities,
@@ -55,7 +56,7 @@ from crow_acp.session import Session
 logger = logging.getLogger(__name__)
 
 
-class CrowAgent(ACPAgent):
+class AcpAgent(Agent):
     """
     ACP-native agent - single agent class.
 
@@ -138,9 +139,7 @@ class CrowAgent(ACPAgent):
         logger.info("Creating new session in cwd: %s", cwd)
 
         # Use default MCP config if no servers provided
-        fallback_config = (
-            self._config.get_builtin_mcp_config() if not mcp_servers else None
-        )
+        fallback_config = self._config.get_builtin_mcp_config()
 
         # Create MCP client (builtin if no servers provided)
         mcp_client = await create_mcp_client_from_acp(
@@ -187,9 +186,7 @@ class CrowAgent(ACPAgent):
 
             # Setup MCP client (same as new_session)
             # Use default config if no servers provided
-            fallback_config = (
-                self._config.get_builtin_mcp_config() if not mcp_servers else None
-            )
+            fallback_config = self._config.get_builtin_mcp_config()
             if fallback_config:
                 mcp_client = await create_mcp_client_from_acp(
                     [], fallback_config=fallback_config
@@ -274,8 +271,10 @@ class CrowAgent(ACPAgent):
 
                 elif chunk_type == "thinking":
                     # Send agent thought chunk (if client supports it)
-                    # TODO: Use update_agent_thought() when available
-                    pass
+                    await self._conn.session_update(
+                        session_id,
+                        update_agent_thought(text_block(chunk["token"])),
+                    )
 
                 elif chunk_type == "tool_call":
                     # Send tool call start
@@ -538,7 +537,7 @@ class CrowAgent(ACPAgent):
 
 async def agent_run() -> None:
     logging.basicConfig(level=logging.INFO)
-    await run_agent(CrowAgent())
+    await run_agent(AcpAgent())
 
 
 def main():

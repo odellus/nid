@@ -7,6 +7,7 @@ requires-python = ">=3.14"
 dependencies = [
     "agent-client-protocol>=0.8.1",
     "fastmcp>=2.14.5",
+    "ipython>=9.10.0",
     "jinja2>=3.1.6",
     "openai>=2.21.0",
     "pysqlite3>=0.6.0",

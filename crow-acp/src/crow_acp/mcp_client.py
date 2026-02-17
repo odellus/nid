@@ -130,11 +130,17 @@ async def create_mcp_client_from_acp(
                 "MCP servers must be provided either via ACP protocol or fallback_config."
             )
         logger.info("No MCP servers provided, using fallback config")
-        return MCPClient(fallback_config)
+    # So fallback_config exists.
+    # We don't know if mcp_servers is an empty list
+    logger.info(f"mcp_servers: {mcp_servers}")
+    logger.info(f"fallback_config: {fallback_config}")
 
+    # Let's try to use the fallback_config
+    config = acp_to_fastmcp_config(mcp_servers)
+    logger.info(f"config: {config}")
+    config["mcpServers"].update(**fallback_config["mcpServers"])
     # Convert ACP format to FastMCP config dict
     logger.info(f"Creating FastMCP client from {len(mcp_servers)} ACP servers")
-    config = acp_to_fastmcp_config(mcp_servers)
 
     # Create FastMCP client from config
     return MCPClient(config)
