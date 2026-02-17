@@ -23,7 +23,7 @@ from typing import Literal
 import charset_normalizer
 from binaryornot.check import is_binary
 from cachetools import LRUCache
-
+from pydantic import BaseModel, Field
 from crow_mcp.server.main import mcp
 
 logging.basicConfig(level=logging.INFO)
@@ -390,6 +390,7 @@ def get_editor() -> FileEditor:
     return _editor
 
 
+
 @mcp.tool
 async def file_editor(
     command: Command,
@@ -410,13 +411,13 @@ async def file_editor(
     - undo_edit: Undo last edit
 
     Args:
-        command: The command to run
-        path: Absolute path to file or directory
-        file_text: Content for create command
-        view_range: [start, end] line range for view (optional)
-        old_str: String to replace for str_replace
-        new_str: New string for str_replace or insert
-        insert_line: Line number to insert after (0 = beginning)
+        command: str - The command to run (required)
+        path: str -  Absolute path to file or directory (required)
+        file_text: str - Content for create command
+        view_range: list[int] | None - Range of lines to view
+        old_str: str - String to replace for str_replace
+        new_str: str - New string for str_replace or insert
+        insert_line: int - Line number to insert after (0 = beginning)
 
     Returns:
         Result message with context

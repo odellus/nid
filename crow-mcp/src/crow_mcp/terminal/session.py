@@ -90,7 +90,7 @@ class TerminalSession:
 
         # Remove command echo from output
         output = output.lstrip().removeprefix(command.lstrip()).lstrip()
-        
+
         return output.rstrip()
 
     def execute(
@@ -100,7 +100,7 @@ class TerminalSession:
         timeout: float | None = None,
     ) -> dict[str, Any]:
         """Execute a command and return result dict."""
-        
+
         if not self._initialized:
             raise RuntimeError("Terminal session not initialized")
 
@@ -168,9 +168,9 @@ class TerminalSession:
 
     def _execute_command(self, command: str, timeout: float | None) -> dict[str, Any]:
         """Execute a normal command with timeout handling."""
-        
+
         logger.debug(f"Executing command: {command!r}")
-        
+
         # Clear buffer and send command
         self.backend.clear_screen()
         self.backend.send_keys(command, enter=True)
@@ -188,7 +188,7 @@ class TerminalSession:
 
             # Read current output
             output = self.backend.read_screen()
-            
+
             # Debug: log output every 10 polls or if it changed
             if poll_count % 10 == 0 or output != last_output:
                 logger.debug(f"Poll #{poll_count} (elapsed={elapsed:.1f}s): output length={len(output)}")
@@ -245,7 +245,7 @@ class TerminalSession:
         ps1_matches: list[re.Match],
     ) -> dict[str, Any]:
         """Build result dict from completed command."""
-        
+
         # Extract metadata from last PS1 match
         metadata = CmdOutputMetadata.from_ps1_match(ps1_matches[-1])
 
@@ -259,8 +259,6 @@ class TerminalSession:
         return {
             "output": output.strip(),
             "exit_code": metadata.exit_code,
-            "working_dir": metadata.working_dir,
-            "py_interpreter": metadata.py_interpreter_path,
         }
 
     def _detect_working_dir(self) -> str:

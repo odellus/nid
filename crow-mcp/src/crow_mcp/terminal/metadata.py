@@ -32,12 +32,7 @@ class CmdOutputMetadata(BaseModel):
     hostname: str | None = Field(
         default=None, description="The hostname of the machine."
     )
-    working_dir: str | None = Field(
-        default=None, description="The current working directory."
-    )
-    py_interpreter_path: str | None = Field(
-        default=None, description="The path to the current Python interpreter."
-    )
+
     prefix: str = Field(default="", description="Prefix to add to command output")
     suffix: str = Field(default="", description="Suffix to add to command output")
 
@@ -51,8 +46,6 @@ class CmdOutputMetadata(BaseModel):
                 "exit_code": "$?",
                 "username": r"\u",
                 "hostname": r"\h",
-                "working_dir": r"$(pwd)",
-                "py_interpreter_path": r'$(command -v python || echo "")',
             },
             indent=2,
         )
@@ -82,7 +75,7 @@ class CmdOutputMetadata(BaseModel):
         """Extract the required metadata from a PS1 prompt match."""
         metadata = json.loads(match.group(1))
         processed = metadata.copy()
-        
+
         # Convert numeric fields
         if "pid" in metadata:
             try:

@@ -13,6 +13,7 @@ import asyncio
 import json
 import logging
 from contextlib import AsyncExitStack
+from threading import ExceptHookArgs
 from typing import Any
 
 from acp import (
@@ -47,6 +48,7 @@ from acp.schema import (
     ToolCallStart,
 )
 from fastmcp import Client as MCPClient
+from json_schema_to_pydantic import create_model
 
 from crow_acp.config import Config, get_default_config
 from crow_acp.llm import configure_llm
@@ -54,6 +56,39 @@ from crow_acp.mcp_client import create_mcp_client_from_acp, get_tools
 from crow_acp.session import Session
 
 logger = logging.getLogger(__name__)
+
+
+def maximal_deserialize(data):
+    """
+    Recursively drills into dictionaries and lists,
+    deserializing any JSON strings it finds until
+    no more strings can be converted to objects.
+    """
+    # 1. If it's a string, try to decode it
+    if isinstance(data, str):
+        try:
+            # We strip it to avoid trying to load plain numbers/bools
+            # as JSON if they are just "1" or "true"
+            if data.startswith(("{", "[")):
+                decoded = json.loads(data)
+                # If it successfully decoded, recurse on the result
+                # (to handle nested-serialized strings)
+                return maximal_deserialize(decoded)
+        except json.JSONDecodeError, TypeError, ValueError:
+            # Not valid JSON, return the original string
+            pass
+        return data
+
+    # 2. If it's a dictionary, recurse on its values
+    elif isinstance(data, dict):
+        return {k: maximal_deserialize(v) for k, v in data.items()}
+
+    # 3. If it's a list, recurse on its elements
+    elif isinstance(data, list):
+        return [maximal_deserialize(item) for item in data]
+
+    # 4. Return anything else as-is (int, float, bool, None)
+    return data
 
 
 class AcpAgent(Agent):
@@ -88,6 +123,8 @@ class AcpAgent(Agent):
         self._db_path = self._config.database_path
         self._exit_stack = AsyncExitStack()
         self._sessions: dict[str, Session] = {}
+        self._session_id: str | None = None
+        self._session: Session | None = None
         self._mcp_clients: dict[str, Any] = {}  # session_id -> mcp_client
         self._tools: dict[str, list[dict]] = {}  # session_id -> tools
         self._llm = configure_llm(debug=False)
@@ -152,7 +189,6 @@ class AcpAgent(Agent):
         # Get tools from MCP server
         tools = await get_tools(mcp_client)
 
-        # Create Crow session (persisted to DB)
         session = Session.create(
             prompt_id="crow-v1",
             prompt_args={"workspace": cwd},
@@ -164,6 +200,8 @@ class AcpAgent(Agent):
 
         # Store in-memory references
         self._sessions[session.session_id] = session
+        self._session = session
+        self._session_id = session.session_id
         self._mcp_clients[session.session_id] = mcp_client
         self._tools[session.session_id] = tools
 
@@ -202,6 +240,8 @@ class AcpAgent(Agent):
 
             # Store in-memory references
             self._sessions[session_id] = session
+            self._session = session
+            self._session_id = session.session_id
             self._mcp_clients[session_id] = mcp_client
             self._tools[session_id] = tools
 
@@ -480,18 +520,35 @@ class AcpAgent(Agent):
         mcp_client = self._mcp_clients[session_id]
         tool_results = []
 
+        # tool_schema_map = {tool["name"]: tool for tool in tools}
+
         for tool_call in tool_call_inputs:
-            result = await mcp_client.call_tool(
-                tool_call["function"]["name"],
-                json.loads(tool_call["function"]["arguments"]),
-            )
-            tool_results.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": tool_call["id"],
-                    "content": result.content[0].text,
-                }
-            )
+            tool_name = tool_call["function"]["name"]
+            tool_args = tool_call["function"]["arguments"]
+            logger.info(f"""TOOL-NAME: {tool_name}""")
+            logger.info(f"""TOOL-ARGS: {tool_args}""")
+            try:
+                arg_dict = maximal_deserialize(json.loads(tool_args))
+
+                result = await mcp_client.call_tool(
+                    tool_call["function"]["name"],
+                    arg_dict,
+                )
+                tool_results.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call["id"],
+                        "content": result.content[0].text,
+                    }
+                )
+            except Exception as e:
+                tool_results.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call["id"],
+                        "content": f"Error: {str(e)}",
+                    }
+                )
         return tool_results
 
     async def _react_loop(self, session_id: str, max_turns: int = 50000):
