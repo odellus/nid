@@ -523,12 +523,11 @@ class AcpAgent(Agent):
         # tool_schema_map = {tool["name"]: tool for tool in tools}
 
         for tool_call in tool_call_inputs:
-            tool_name = tool_call["function"]["name"]
             tool_args = tool_call["function"]["arguments"]
-            logger.info(f"""TOOL-NAME: {tool_name}""")
-            logger.info(f"""TOOL-ARGS: {tool_args}""")
+            # logger.info(f"""TOOL-NAME: {tool_name}""")
+            # logger.info(f"""TOOL-ARGS: {tool_args}""")
             try:
-                arg_dict = maximal_deserialize(json.loads(tool_args))
+                arg_dict = maximal_deserialize(tool_args)
 
                 result = await mcp_client.call_tool(
                     tool_call["function"]["name"],
