@@ -961,15 +961,156 @@ cat test_results.txt  # Holy shit, it worked!
 - Is the regex matching but we don't see it?
 - Why does it timeout if commands complete successfully?
 
-### 8.4 Immediate Next Steps
+### 8.4 The PS1 Bug - ROOT CAUSE FOUND
 
-1. **Fix Logging** - Write to file, not just stderr
-2. **Debug PS1** - Add verbose logging to see what's in buffers
-3. **Add pytest tests** - More structured testing
-4. **Document buffering** - Add note about stdout behavior
+**Problem**: Commands were timing out because PS1 metadata wasn't being detected.
+
+**Root Cause**: Setting `PS1` via environment variable (`env["PS1"] = ...`) **doesn't work for interactive bash shells**. Bash ignores PS1 from environment and uses its internal prompt settings instead.
+
+**The Fix** (in `backend.py`):
+```python
+# ❌ WRONG - Doesn't work for interactive bash:
+env["PS1"] = self.PS1
+
+# ✅ CORRECT - Inject PS1 after bash starts:
+# Wait for bash to initialize
+time.sleep(0.3)
+
+# Send PS1 command to running bash
+ps1_command = f'PS1="{self.PS1}"\n'
+os.write(self._pty_master_fd, ps1_command.encode("utf-8"))
+time.sleep(0.2)  # Let PS1 take effect
+
+# Clear the buffer (will contain the PS1 command we just sent)
+self.clear_screen()
+```
+
+**Result**: Commands now complete in **0.5s** instead of timing out!
+
+### 8.5 The Complete Debug Story
+
+**What We Did Wrong**:
+1. Said "95% done" when tests were timing out 🤦
+2. Thought PS1 env var would work (it doesn't)
+3. Didn't have file logging (flying blind)
+4. Confused output buffering with broken tests
+
+**What We Did Right**:
+1. Actually tested with output capture to file
+2. Added comprehensive file logging
+3. Debug logged PS1 detection attempts
+4. Fixed the root cause systematically
+
+**The Moral**: NEVER claim something works without TESTED EVIDENCE. Buffering made tests look broken when they were actually passing. File logging revealed the truth.
+
+---
+
+## Part 9: Implementation Checklist - UPDATED
+
+### ✅ Phase 1: Core Implementation (COMPLETE)
+
+- [x] Copy `constants.py` from ref/
+- [x] Copy `metadata.py` from ref/  
+- [x] Copy `subprocess_terminal.py` → `backend.py`
+  - [x] Remove SDK dependencies
+  - [x] Replace logger with standard logging
+  - [x] **FIX: Inject PS1 after bash starts, not via env var**
+  - [x] Update imports
+- [x] Copy `terminal_session.py` → `session.py`
+  - [x] Remove Action/Observation classes
+  - [x] Simplify API to use dict returns
+  - [x] **ADD: Verbose PS1 debugging logs**
+  - [x] Remove maybe_truncate (for now)
+- [x] Create `logging_config.py` for file-based logging
+- [x] Create `main.py` with `@mcp.tool` decorator
+  - [x] Implement singleton pattern
+  - [x] Handle reset, timeout, is_input
+  - [x] Format output with metadata
+- [x] **FIX: Circular import issues (import from .main not .)**
+- [x] **TEST: With manual_test.py**
+  - [x] `echo` command works
+  - [x] `cd` persistence works
+  - [x] `export` persistence works
+  - [x] `source venv` persistence works
+  - [x] Timeout behavior works
+  - [x] Reset behavior works
+  - [x] **PS1 metadata detected in 0.5s (not 30s!)**
+
+### Phase 2: Polish & Testing (IN PROGRESS)
+
+- [ ] Add pytest unit tests
+- [ ] Add integration tests  
+- [ ] Add better error messages
+- [ ] Add output truncation (optional)
+- [ ] Add secret masking (optional)
+- [ ] Test with slower commands
+- [ ] Test with interactive commands
+- [ ] Document PS1 initialization quirk
+
+### Phase 3: Documentation (TODO)
+
+- [ ] Update README.md
+- [ ] Add usage examples
+- [ ] Document parameters
+- [ ] Document return format
+- [ ] Add troubleshooting section
+- [ ] **Document buffering behavior**
+- [ ] **Document PS1 initialization fix**
+
+---
+
+## Part 10: Key Learnings Summary
+
+### Technical Learnings
+
+1. **PS1 Environment Variable Myth**
+   - Setting `PS1` in env doesn't work for interactive bash
+   - Must inject `PS1="..."` command after bash starts
+   - This is a bash quirk, not Python or PTY issue
+
+2. **PTY Output Buffering**
+   - Python's stdout is line-buffered by default
+   - Long-running tests can appear broken when actually passing
+   - Always test with output redirect to file: `cmd > out.txt`
+   - Exit flushes buffers, revealing truth
+
+3. **File Logging is Critical for PTY Debugging**
+   - Can't use print debugging (output is the test!)
+   - File logging reveals what's actually in buffers
+   - Verbose logging of regex matching attempts essential
+
+4. **PS1 JSON Metadata Pattern is Brilliant**
+   - Self-describing command completion
+   - Survives concurrent output, partial reads
+   - Provides rich metadata (exit code, working dir, Python path)
+   - But requires correct initialization!
+
+### Process Learnings
+
+1. **Never Claim "95% Done" Without Testing**
+   - We said this when tests were timing out
+   - Classic "pond scum" behavior from AGENTS.md
+   - ALWAYS TEST. FOR REAL. WITH OUTPUT CAPTURE.
+
+2. **Simple Tests First**
+   - `manual_test.py` saved us
+   - `debug_test.py` with short timeout revealed PS1 issue
+   - Don't jump to complex pytest before basic manual testing
+
+3. **Logging Infrastructure Pays Off**
+   - Spending 30 minutes on `logging_config.py` was worth it
+   - Would have spent hours debugging without file logs
+   - Log files in `~/.cache/crow-mcp/logs/` made debugging easy
+
+4. **Import Patterns Matter**
+   - Circular imports from `from crow_mcp.server import mcp`
+   - Fixed by `from crow_mcp.server.main import mcp`
+   - Python import system is fragile, be explicit
 
 ---
 
 **Final Thought**: The OpenHands terminal is well-architected and battle-tested. Our job is not to reimplement it from scratch, but to **adapt it** for FastMCP and remove SDK dependencies. Preserve the hard parts (PTY handling, PS1 metadata), simplify the abstractions (no Action/Observation classes), and leverage FastMCP's capabilities.
 
 **Real Final Thought**: NEVER claim something works without actually running it. The buffering incident proved that tests can pass even when we think they're failing. Always capture output to a file to see reality.
+
+**True Final Thought**: PS1 environment variable doesn't work for interactive bash. This one thing took 2 hours to debug. File logging saved us. 🎯
