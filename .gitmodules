@@ -10,3 +10,9 @@
 [submodule "refs/pi-mono"]
 	path = refs/pi-mono
 	url = https://github.com/badlogic/pi-mono.git
+[submodule "refs/crow"]
+	path = refs/crow
+	url = https://github.com/odellus/crow
+[submodule "refs/claude-code-acp"]
+	path = refs/claude-code-acp
+	url = https://github.com/zed-industries/claude-code-acp

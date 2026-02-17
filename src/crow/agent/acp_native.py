@@ -93,10 +93,6 @@ class Agent(ACPAgent):
         """Store connection for sending updates"""
         self._conn = conn
 
-    # ========================================================================
-    # ACP Protocol Methods
-    # ========================================================================
-
     async def initialize(
         self,
         protocol_version: int,
@@ -325,10 +321,6 @@ class Agent(ACPAgent):
         logger.info("Cleaning up Agent resources")
         await self._exit_stack.aclose()
         logger.info("Cleanup complete")
-
-    # ========================================================================
-    # Business Logic Methods (from old Agent)
-    # ========================================================================
 
     def _send_request(self, session_id: str):
         """

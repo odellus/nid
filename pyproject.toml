@@ -38,6 +38,7 @@ packages = ["src/crow"]
 [tool.uv.workspace]
 members = [
     "crow-mcp-server",
+    "crow-acp-learning",
 ]
 
 [tool.uv.sources]
