@@ -1,9 +1,9 @@
 [project]
-name = "crow-mcp-server"
+name = "crow-mcp"
 version = "0.1.0"
 description = "Crow builtin MCP server"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 dependencies = [
     "binaryornot>=0.4.4",
     "cachetools>=7.0.0",
@@ -14,3 +14,14 @@ dependencies = [
     "readabilipy>=0.3.0",
     "pydantic>=2.12.5",
 ]
+
+
+[project.scripts]
+crow-mcp = "crow_mcp.server.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = []

@@ -16,26 +16,22 @@ import logging
 import mimetypes
 import os
 import re
-import shutil
 import tempfile
 from pathlib import Path
 from typing import Literal
-from urllib.parse import urlparse, urlunparse
 
 import charset_normalizer
-import markdownify
-import readabilipy.simple_json
 from binaryornot.check import is_binary
 from cachetools import LRUCache
-from fastmcp import FastMCP
-from httpx import AsyncClient
-from pydantic import BaseModel
+
+from crow_mcp.server import mcp
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 # Create the combined MCP server
-mcp = FastMCP(name="crow-builtin")
+# mcp = FastMCP(name="crow-builtin")
 
 
 # Constants

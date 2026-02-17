@@ -9,33 +9,19 @@ Combines all builtin tools into one MCP server:
 This is the default MCP server for crow agents.
 """
 
-import base64
-import hashlib
-import json
 import logging
-import mimetypes
-import os
-import re
-import shutil
-import tempfile
-from pathlib import Path
-from typing import Literal
-from urllib.parse import urlparse, urlunparse
 
-import charset_normalizer
 import markdownify
 import readabilipy.simple_json
-from binaryornot.check import is_binary
-from cachetools import LRUCache
-from fastmcp import FastMCP
 from httpx import AsyncClient
-from pydantic import BaseModel
+
+from crow_mcp.server import mcp
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Create the combined MCP server
-mcp = FastMCP(name="crow-builtin")
+# mcp = FastMCP(name="crow-builtin")
 
 
 DEFAULT_USER_AGENT = "CrowAgent/1.0"
@@ -73,7 +59,7 @@ async def fetch_url(url: str, user_agent: str = DEFAULT_USER_AGENT) -> tuple[str
 
 
 @mcp.tool
-async def fetch(
+async def web_fetch(
     url: str,
     max_length: int = 5000,
     start_index: int = 0,
