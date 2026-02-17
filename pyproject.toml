@@ -36,10 +36,7 @@ dev = [
 packages = ["src/crow"]
 
 [tool.uv.workspace]
-members = [
-    "crow-mcp-server",
-    "crow-acp-learning",
-]
+members = []
 
 [tool.uv.sources]
 crow-mcp-server = { workspace = true }

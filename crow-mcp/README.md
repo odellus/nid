@@ -1,3 +1,8 @@
+<p align="center">
+    <img src="https://github.com/odellus/crow/raw/v0.1.0/assets/crow-logo-crop.png" description="crow logo"width=500/>
+</p>
+
+
 # `crow-mcp`
 
 ## Configuration

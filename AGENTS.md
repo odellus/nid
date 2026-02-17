@@ -172,18 +172,24 @@ packages = ["package_name"]  # NOT ["."] or ["*"]
 - ✅ Extensions can use any package without import issues
 - ✅ Follows the pattern from refs/software-agent-sdk
 
-### 2. ALWAYS Use `uv --project .`
+### 2. ALWAYS Use `uv`
 ```bash
 # ✅ CORRECT
-uv --project . run pytest tests/
-uv --project . run python src/crow/acp_agent.py
+which python
+# Oh shit! we're using the wrong version
+source .venv/bin/activate
+# Let's check again
+which python
+# okay good to go!
+uv run pytest tests/
+uv run python src/crow/acp_agent.py
 
 # ❌ WRONG - Will use wrong Python/environment
 python -m pytest tests/
 pytest tests/
 ```
 
-**Why**: Each terminal session starts fresh. The `--project .` flag ensures:
+**Why**: Each terminal session is persistent actually, so you can just source .venv/bin/activate and you will be using the correct environment, but check first:
 - Correct Python version (3.12+)
 - Correct virtual environment
 - Correct dependencies loaded
@@ -202,7 +208,7 @@ THE PATHOLOGICAL ANTHROPIC BULLSHIT PATTERN:
 
 THE ACTUAL WORKFLOW:
 1. Write code
-2. TEST IT IMMEDIATELY: uv --project . run path/to/script.py
+2. TEST IT IMMEDIATELY: uv run path/to/script.py
 3. If it fails: FIX IT AND TEST AGAIN
 4. Don't finish the turn until it works
 5. DON'T ASK "should I test?" - OF COURSE YOU SHOULD TEST
@@ -336,18 +342,6 @@ The `docs/essays/` directory IS this agent's memory. Each essay captures a synth
 
 ---
 
-## 🛠️ Practical Workflow
-
-### 3. NO Persistent Terminal State
-Each terminal command executes in isolation. You cannot:
-- Rely on `cd` from previous commands
-- Use environment variables from previous sessions
-- Assume any state persistence
-
-**Always use absolute paths and `--project .` flag.**
-
----
-
 ## 🔄 The Dialectical Development Process
 
 ### The Core Pattern
@@ -418,34 +412,36 @@ Each essay captures a synthesis - a new understanding forged through the dialect
 
 ```bash
 # 1. RED: Write failing test
-uv --project . run pytest tests/unit/test_feature.py -v
+# be sure you have done `source .venv/bin/activate`
+# and you can tell which python you are using with `which python`
+uv run pytest tests/unit/test_feature.py -v
 
 # 2. GREEN: Implement minimal code to pass
-uv --project . run pytest tests/unit/test_feature.py -v
+uv run pytest tests/unit/test_feature.py -v
 
 # 3. REFACTOR: Clean up while keeping tests green
-uv --project . run pytest tests/ -v
+uv run pytest tests/ -v
 ```
 
 ### Running Tests
 
 ```bash
 # Run all tests
-uv --project . run pytest tests/ -v
+uv run pytest tests/ -v
 
 # Run specific test levels
-uv --project . run pytest tests/unit/ -v          # Fast, isolated tests
-uv --project . run pytest tests/integration/ -v   # Component interactions
-uv --project . run pytest tests/e2e/ -v           # Full stack tests
+uv run pytest tests/unit/ -v          # Fast, isolated tests
+uv run pytest tests/integration/ -v   # Component interactions
+uv run pytest tests/e2e/ -v           # Full stack tests
 
 # Run specific test file
-uv --project . run pytest tests/unit/test_mcp_lifecycle.py -v
+uv run pytest tests/unit/test_mcp_lifecycle.py -v
 
 # Run with coverage
-uv --project . run pytest --cov=src/crow --cov-report=html tests/
+uv run pytest --cov=src/crow --cov-report=html tests/
 
 # Run tests matching pattern
-uv --project . run pytest tests/ -k "lifecycle" -v
+uv run pytest tests/ -k "lifecycle" -v
 ```
 
 ### Test Structure
@@ -895,11 +891,17 @@ session = Session.create(...)
 
 ```python
 # ❌ WRONG
-python test.py              # Wrong environment
-pytest tests/               # Missing --project flag
+python test.py              # NOT USING UV
+pytest tests/               # NOT USING UV
 
 # ✅ CORRECT
-uv --project . run pytest tests/ -v
+# check which python you are using!
+# `which python`
+# if it's the system version, you need to `source .venv/bin/activate`
+which python
+# assume it is correct, otherwise `source .venv/bin/activate`, then
+uv run test.py
+uv run pytest tests/ -v
 ```
 
 ### 5. ❌ Manual Resource Management
@@ -927,16 +929,16 @@ cat deps/python-sdk/docs/quickstart.md
 
 # 2. Write tests FIRST (RED)
 vim tests/unit/test_new_feature.py
-uv --project . run pytest tests/unit/test_new_feature.py -v
+uv run pytest tests/unit/test_new_feature.py -v
 # Expected: FAIL
 
 # 3. Implement minimal code (GREEN)
 vim src/crow/agent/new_feature.py
-uv --project . run pytest tests/unit/test_new_feature.py -v
+uv run pytest tests/unit/test_new_feature.py -v
 # Expected: PASS
 
 # 4. Run ALL tests to verify no regressions
-uv --project . run pytest tests/ -v
+uv run pytest tests/ -v
 
 # 5. Refactor if needed
 # Keep running tests to ensure they stay green
@@ -949,18 +951,18 @@ uv --project . run pytest tests/ -v
 ```bash
 # 1. Write test that reproduces bug (RED)
 vim tests/unit/test_bug_fix.py
-uv --project . run pytest tests/unit/test_bug_fix.py -v
+uv run pytest tests/unit/test_bug_fix.py -v
 # Expected: FAIL (bug exists)
 
 # 2. Fix the bug
 vim src/crow/agent/buggy_file.py
 
 # 3. Verify test passes (GREEN)
-uv --project . run pytest tests/unit/test_bug_fix.py -v
+uv run pytest tests/unit/test_bug_fix.py -v
 # Expected: PASS
 
 # 4. Run all tests
-uv --project . run pytest tests/ -v
+uv run pytest tests/ -v
 ```
 
 ---
@@ -1280,7 +1282,7 @@ deps/python-sdk/schema/schema.json
 
 ## ⚠️ Final Warnings
 
-1. **ALWAYS** use `uv --project .` - no exceptions
+1. **ALWAYS** make sure you are using the correct virtual environment, which you can check by running `which python` and if it is the system version, activate the correct virtual environment with `source .venv/bin/activate` in the virtual environment directory.
 2. **ALWAYS** write tests first - this is mandatory
 3. **ALWAYS** research before implementing
 4. **ALWAYS** use existing abstractions
@@ -1373,7 +1375,7 @@ This is a living document. Keep it updated.
 ### Test Strategy
 - Rail-guard tests in `tests/unit/test_merged_agent.py`
 - These currently FAIL but define target structure
-- Run: `uv --project . run pytest tests/unit/test_merged_agent.py -v`
+- Run: `uv run pytest tests/unit/test_merged_agent.py -v`
 
 ### Important Context for Local LLMs
 - Local LLMs are SLOW (15+ minutes per response)

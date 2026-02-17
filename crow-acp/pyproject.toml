@@ -1,0 +1,25 @@
+[project]
+name = "crow-acp"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "agent-client-protocol>=0.8.1",
+    "fastmcp>=2.14.5",
+    "jinja2>=3.1.6",
+    "openai>=2.21.0",
+    "pysqlite3>=0.6.0",
+    "sqlalchemy>=2.0.46",
+]
+
+
+[project.scripts]
+crow-acp = "crow_acp.agent:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = []
