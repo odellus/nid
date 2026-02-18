@@ -227,7 +227,7 @@ class AcpAgent(Agent):
             fallback_config = self._config.get_builtin_mcp_config()
             if fallback_config:
                 mcp_client = await create_mcp_client_from_acp(
-                    [], fallback_config=fallback_config
+                    mcp_servers, fallback_config=fallback_config
                 )
             else:
                 mcp_client = await create_mcp_client_from_acp(mcp_servers)
