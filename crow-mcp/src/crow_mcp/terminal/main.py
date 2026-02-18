@@ -48,34 +48,33 @@ async def terminal(
                   If False (default), execute as new command.
         timeout: Max seconds to wait. If omitted, uses soft timeout
                  (pauses after 30s of no output and asks to continue).
-        reset: If True, kill terminal and start fresh. Loses all
-               environment variables, venv, etc. Cannot use with is_input.
+        reset: If True, kill terminal and start fresh. Use if you think the terminal tool is broken for the session, odds are it just needs a restart.  Loses all environment variables, venv, etc. Cannot use with is_input.
 
     Returns:
         Command output with metadata (exit code, working directory, etc.)
-        
+
     Examples:
         # Basic command
         terminal("ls -la")
-        
+
         # Change directory (persists)
         terminal("cd /tmp")
         terminal("pwd")  # Shows /tmp
-        
+
         # Set environment variable (persists)
         terminal("export MY_VAR=hello")
         terminal("echo $MY_VAR")  # Shows "hello"
-        
+
         # Activate virtual environment (persists)
         terminal("source .venv/bin/activate")
         terminal("which python")  # Shows .venv/bin/python
-        
+
         # Long-running command with timeout
         terminal("npm install", timeout=120)
-        
+
         # Interrupt running command
         terminal("C-c")
-        
+
         # Reset terminal (lose all state)
         terminal("", reset=True)
     """
@@ -91,13 +90,13 @@ async def terminal(
                 old_work_dir = _terminal.work_dir
                 _terminal.close()
                 _terminal = None
-            
+
             # Create fresh terminal
             term = get_terminal()
-            
+
             if not command.strip():
                 return "Terminal reset successfully. All previous state lost."
-        
+
         # Get terminal instance
         term = get_terminal()
 
@@ -110,13 +109,13 @@ async def terminal(
 
         # Format output
         output = result["output"]
-        
+
         if result.get("working_dir"):
             output += f"\n[Current working directory: {result['working_dir']}]"
-        
+
         if result.get("py_interpreter"):
             output += f"\n[Python interpreter: {result['py_interpreter']}]"
-        
+
         exit_code = result.get("exit_code", 0)
         if exit_code != -1:
             if exit_code == 0:

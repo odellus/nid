@@ -9,13 +9,17 @@ from openai import OpenAI
 
 load_dotenv()
 
+MODEL = "qwen3-coder-plus"
+
 
 def configure_provider():
     return OpenAI(api_key=os.getenv("ZAI_API_KEY"), base_url=os.getenv("ZAI_BASE_URL"))
 
 
-def setup_mcp_client(mcp_path="search.py"):
-    return Client(mcp_path)
+def setup_mcp_client(mcp_path="/home/thomas/.crow/mcp.json"):
+    with open(mcp_path, "r") as f:
+        config = json.load(f)
+    return Client(config)
 
 
 async def get_tools(mcp_client):
@@ -50,6 +54,7 @@ def send_request(messages, model, tools, lm):
 
 
 def process_chunk(chunk, thinking, content, tool_calls, tool_call_id, verbose=True):
+    print(chunk)
     if not chunk.choices[0].delta.tool_calls:
         if not hasattr(chunk.choices[0].delta, "reasoning_content"):
             verbal_chunk = chunk.choices[0].delta.content
@@ -66,7 +71,7 @@ def process_chunk(chunk, thinking, content, tool_calls, tool_call_id, verbose=Tr
 
     else:
         for call in chunk.choices[0].delta.tool_calls:
-            if call.id is not None:
+            if call.id is not None and call.id != "":
                 tool_call_id = call.id
                 if call.id not in tool_calls:
                     tool_calls[call.id] = dict(
@@ -121,6 +126,7 @@ def process_tool_call_inputs(tool_calls):
 async def execute_tool_calls(mcp_client, tool_call_inputs, verbose=True):
     tool_results = []
     for tool_call in tool_call_inputs:
+        print(tool_call)
         result = await mcp_client.call_tool(
             tool_call["function"]["name"],
             json.loads(tool_call["function"]["arguments"]),
@@ -163,7 +169,7 @@ def add_response_to_messages(
 
 
 async def react_loop(
-    messages, mcp_client, lm, model, tools, max_turns=50000, verbose=True
+    messages, mcp_client, lm, model, tools, max_turns=50000, verbose=False
 ):
     for _ in range(max_turns):
         response = send_request(messages, model, tools, lm)
@@ -189,7 +195,7 @@ async def main():
     ]
     async with mcp_client:
         tools = await get_tools(mcp_client)
-        messages = await react_loop(message, mcp_client, lm, "glm-4.7", tools)
+        messages = await react_loop(message, mcp_client, lm, MODEL, tools)
     return messages
 
 

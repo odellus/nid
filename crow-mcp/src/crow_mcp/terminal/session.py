@@ -8,6 +8,7 @@ from typing import Any
 from .backend import SubprocessTerminal
 from .constants import (
     CMD_OUTPUT_PS1_END,
+    CMD_OUTPUT_PS1_BEGIN,
     NO_CHANGE_TIMEOUT_SECONDS,
     POLL_INTERVAL,
     TIMEOUT_MESSAGE_TEMPLATE,

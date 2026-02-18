@@ -8,12 +8,14 @@ Encapsulates:
 """
 
 import hashlib
+import json
 from typing import Any
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session as SQLAlchemySession
 
-from .db import Base, Session as SessionModel, Event, Prompt
+from .db import Base, Event, Prompt
+from .db import Session as SessionModel
 from .prompt import render_template
 
 
@@ -24,34 +26,35 @@ def lookup_or_create_prompt(
 ) -> str:
     """
     Lookup existing prompt by template content, or create new one if not found.
-    
+
     This implements the simple direct lookup pattern:
     1. Try to find prompt by exact template match
     2. If found, return its ID
     3. If not found, create new prompt with generated ID
-    
+
     Args:
         template: Template string content
         name: Display name for the prompt
         db_path: Database connection string
-        
+
     Returns:
         Prompt ID (existing or newly created)
     """
     db = SQLAlchemySession(create_engine(db_path))
-    
+
     try:
         # Try to find existing prompt by template content
         existing = db.query(Prompt).filter_by(template=template).first()
-        
+
         if existing:
             db.close()
             return existing.id
-        
+
         # Create new prompt with generated ID
         import json
+
         prompt_id = f"prompt-{hashlib.sha256(template.encode()).hexdigest()[:12]}"
-        
+
         new_prompt = Prompt(
             id=prompt_id,
             name=name,
@@ -60,7 +63,7 @@ def lookup_or_create_prompt(
         db.add(new_prompt)
         db.commit()
         db.close()
-        
+
         return prompt_id
     finally:
         db.close()
@@ -69,17 +72,17 @@ def lookup_or_create_prompt(
 class Session:
     """
     Manages conversation state and persistence.
-    
+
     Responsibilities:
     - Build and maintain conversation messages (in-memory)
     - Persist events to database
     - Reconstruct conversation from database
     """
-    
+
     def __init__(self, session_id: str, db_path: str = "sqlite:///mcp_testing.db"):
         """
         Initialize session with ID and database path.
-        
+
         Args:
             session_id: Unique session identifier
             db_path: Database connection string
@@ -90,7 +93,7 @@ class Session:
         self.conv_index = 0
         self._db = None
         self._model = None  # SQLAlchemy model instance
-    
+
     @property
     def db(self) -> SQLAlchemySession:
         """Lazy-load database connection"""
@@ -98,16 +101,18 @@ class Session:
             engine = create_engine(self.db_path)
             self._db = SQLAlchemySession(engine)
         return self._db
-    
+
     @property
     def model(self) -> SessionModel:
         """Lazy-load session model from database"""
         if self._model is None:
-            self._model = self.db.query(SessionModel).filter_by(
-                session_id=self.session_id
-            ).first()
+            self._model = (
+                self.db.query(SessionModel)
+                .filter_by(session_id=self.session_id)
+                .first()
+            )
         return self._model
-    
+
     def add_message(
         self,
         role: str,
@@ -116,11 +121,11 @@ class Session:
         tool_call_id: str | None = None,
         tool_call_name: str | None = None,
         tool_arguments: dict | None = None,
-        **kwargs
+        **kwargs,
     ):
         """
         Add message to in-memory messages AND persist to database.
-        
+
         Args:
             role: Message role (user, assistant, tool, system)
             content: Text content
@@ -144,7 +149,7 @@ class Session:
             msg["tool_arguments"] = tool_arguments
         msg.update(kwargs)
         self.messages.append(msg)
-        
+
         # Persist to database
         self._save_event(
             role=role,
@@ -154,7 +159,7 @@ class Session:
             tool_call_name=tool_call_name,
             tool_arguments=tool_arguments,
         )
-    
+
     def add_assistant_response(
         self,
         thinking: list[str],
@@ -164,10 +169,10 @@ class Session:
     ):
         """
         Handle complex assistant message building + tool calls + results.
-        
+
         This replaces the add_response_to_messages function but as a method
         with access to all session state.
-        
+
         Args:
             thinking: List of thinking tokens
             content: List of content tokens
@@ -181,42 +186,35 @@ class Session:
                 content="".join(content) if content else None,
                 reasoning_content="".join(thinking) if thinking else None,
             )
-        
+
         # Build assistant message for LLM (with thinking and content)
         if len(content) > 0 and len(thinking) > 0:
-            self.messages.append({
-                "role": "assistant",
-                "content": "".join(content),
-                "reasoning_content": "".join(thinking),
-            })
+            self.messages.append(
+                {
+                    "role": "assistant",
+                    "content": "".join(content),
+                    "reasoning_content": "".join(thinking),
+                }
+            )
         elif len(thinking) > 0:
-            self.messages.append({
-                "role": "assistant",
-                "reasoning_content": "".join(thinking)
-            })
+            self.messages.append(
+                {"role": "assistant", "reasoning_content": "".join(thinking)}
+            )
         elif len(content) > 0:
-            self.messages.append({
-                "role": "assistant",
-                "content": "".join(content)
-            })
-        
+            self.messages.append({"role": "assistant", "content": "".join(content)})
+
         # Add tool calls and save them
         if len(tool_call_inputs) > 0:
-            self.messages.append({
-                "role": "assistant",
-                "tool_calls": tool_call_inputs
-            })
+            self.messages.append({"role": "assistant", "tool_calls": tool_call_inputs})
             # Save each tool call
             for tool_call in tool_call_inputs:
                 self._save_event(
                     role="assistant",
                     tool_call_id=tool_call["id"],
                     tool_call_name=tool_call["function"]["name"],
-                    tool_arguments=__import__("json").loads(
-                        tool_call["function"]["arguments"]
-                    ),
+                    tool_arguments=json.loads(tool_call["function"]["arguments"]),
                 )
-        
+
         # Add tool results and save them
         if len(tool_results) > 0:
             self.messages.extend(tool_results)
@@ -226,7 +224,7 @@ class Session:
                     tool_call_id=tool_result["tool_call_id"],
                     content=tool_result["content"],
                 )
-    
+
     def _save_event(
         self,
         role: str,
@@ -242,7 +240,7 @@ class Session:
     ):
         """
         Save event to database (internal method).
-        
+
         Args:
             role: Event role
             content: Text content
@@ -272,7 +270,7 @@ class Session:
         self.db.add(event)
         self.db.commit()
         self.conv_index += 1
-    
+
     @classmethod
     def create(
         cls,
@@ -285,9 +283,9 @@ class Session:
     ) -> "Session":
         """
         Factory method to create a new session.
-        
+
         Renders prompt template, creates session_id, sets up DB record.
-        
+
         Args:
             prompt_id: ID of prompt template to use
             prompt_args: Arguments to render template with
@@ -295,7 +293,7 @@ class Session:
             request_params: LLM request parameters
             model_identifier: Model identifier string
             db_path: Database connection string
-            
+
         Returns:
             New Session instance
         """
@@ -304,14 +302,15 @@ class Session:
         prompt = db.query(Prompt).filter_by(id=prompt_id).first()
         if not prompt:
             raise ValueError(f"Prompt '{prompt_id}' not found")
-        
+
         # Render system prompt
         system_prompt = render_template(prompt.template, **prompt_args)
-        
+
         # Generate unique session ID (UUID-based, like everyone else)
         import uuid
+
         session_id = f"sess_{uuid.uuid4().hex[:16]}"
-        
+
         # Create new session model
         session_model = SessionModel(
             session_id=session_id,
@@ -325,43 +324,48 @@ class Session:
         db.add(session_model)
         db.commit()
         db.close()
-        
+
         # Create Session instance with system message
         session = cls(session_id, db_path)
         session.messages = [{"role": "system", "content": system_prompt}]
-        
+
         return session
-    
+
     @classmethod
-    def load(cls, session_id: str, db_path: str = "sqlite:///mcp_testing.db") -> "Session":
+    def load(
+        cls, session_id: str, db_path: str = "sqlite:///mcp_testing.db"
+    ) -> "Session":
         """
         Factory method to load existing session from database.
-        
+
         Reconstructs conversation from events.
-        
+
         Args:
             session_id: Session ID to load
             db_path: Database connection string
-            
+
         Returns:
             Loaded Session instance
         """
         session = cls(session_id, db_path)
-        
+
         # Load session model
         if session.model is None:
             raise ValueError(f"Session '{session_id}' not found")
-        
+
         # Reconstruct messages from events
-        events = session.db.query(Event).filter_by(
-            session_id=session_id
-        ).order_by(Event.conv_index).all()
-        
+        events = (
+            session.db.query(Event)
+            .filter_by(session_id=session_id)
+            .order_by(Event.conv_index)
+            .all()
+        )
+
         session.messages = [{"role": "system", "content": session.model.system_prompt}]
-        
+
         for event in events:
             msg = {"role": event.role}
-            
+
             if event.content:
                 msg["content"] = event.content
             if event.reasoning_content:
@@ -372,21 +376,25 @@ class Session:
                     # Reconstruct tool call
                     if "tool_calls" not in session.messages[-1]:
                         session.messages.append({"role": "assistant", "tool_calls": []})
-                    session.messages[-1]["tool_calls"].append({
-                        "id": event.tool_call_id,
-                        "type": "function",
-                        "function": {
-                            "name": event.tool_call_name,
-                            "arguments": __import__("json").dumps(event.tool_arguments)
+                    session.messages[-1]["tool_calls"].append(
+                        {
+                            "id": event.tool_call_id,
+                            "type": "function",
+                            "function": {
+                                "name": event.tool_call_name,
+                                "arguments": __import__("json").dumps(
+                                    event.tool_arguments
+                                ),
+                            },
                         }
-                    })
+                    )
                     continue
                 elif event.role == "tool":
                     msg["tool_call_id"] = event.tool_call_id
-            
+
             if msg:  # Only append if we have content
                 session.messages.append(msg)
-        
+
         session.conv_index = len(events)
-        
+
         return session
