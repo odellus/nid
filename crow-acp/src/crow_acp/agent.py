@@ -180,7 +180,9 @@ class AcpAgent(Agent):
 
         # Create MCP client (builtin if no servers provided)
         mcp_client = await create_mcp_client_from_acp(
-            mcp_servers, fallback_config=fallback_config
+            mcp_servers,
+            cwd,
+            fallback_config=fallback_config,
         )
 
         # CRITICAL: Use AsyncExitStack for lifecycle management
@@ -227,10 +229,12 @@ class AcpAgent(Agent):
             fallback_config = self._config.get_builtin_mcp_config()
             if fallback_config:
                 mcp_client = await create_mcp_client_from_acp(
-                    mcp_servers, fallback_config=fallback_config
+                    mcp_servers,
+                    cwd,
+                    fallback_config=fallback_config,
                 )
             else:
-                mcp_client = await create_mcp_client_from_acp(mcp_servers)
+                mcp_client = await create_mcp_client_from_acp(mcp_servers, cwd)
 
             # CRITICAL: Use AsyncExitStack for lifecycle management
             mcp_client = await self._exit_stack.enter_async_context(mcp_client)
