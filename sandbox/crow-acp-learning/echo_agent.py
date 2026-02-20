@@ -31,7 +31,7 @@ from acp.schema import (
 )
 
 logging.basicConfig(
-    filename="/home/thomas/src/projects/mcp-testing/crow-acp-learning/echo-agent.log",
+    filename="/home/thomas/src/projects/mcp-testing/sandbox//crow-acp-learning/echo-agent.log",
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
@@ -39,6 +39,8 @@ logging.basicConfig(
 
 class EchoAgent(Agent):
     _conn: Client
+    sessions: {}
+    _cancel_events: dict[str, asyncio.Event] = {}  # session_id -> cancel_event
 
     def on_connect(self, conn: Client) -> None:
         self._conn = conn
@@ -50,6 +52,7 @@ class EchoAgent(Agent):
         client_info: Implementation | None = None,
         **kwargs: Any,
     ) -> InitializeResponse:
+
         return InitializeResponse(protocol_version=protocol_version)
 
     async def new_session(
@@ -58,7 +61,10 @@ class EchoAgent(Agent):
         mcp_servers: list[HttpMcpServer | SseMcpServer | McpServerStdio],
         **kwargs: Any,
     ) -> NewSessionResponse:
-        return NewSessionResponse(session_id=uuid4().hex)
+        session_id = uuid4().hex
+        # Create cancel event for this session
+        self._cancel_events[session_id] = asyncio.Event()
+        return NewSessionResponse(session_id=session_id)
 
     async def prompt(
         self,
@@ -72,6 +78,24 @@ class EchoAgent(Agent):
         session_id: str,
         **kwargs: Any,
     ) -> PromptResponse:
+        # Get the cancel event for this session
+        cancel_event = self._cancel_events.get(session_id)
+
+        # Wait 30 seconds before processing - useful for testing cancel functionality
+        logging.info(f"Starting 30 second delay for session {session_id}")
+        try:
+            # Use wait_for to allow cancellation during the sleep
+            await asyncio.wait_for(
+                cancel_event.wait(),
+                timeout=5.0
+            )
+            # If we get here, cancel_event was set (cancel requested)
+            logging.info(f"Cancelled during delay for session {session_id}")
+            return PromptResponse(stop_reason="cancelled")
+        except asyncio.TimeoutError:
+            # Normal timeout - continue processing
+            logging.info(f"Delay complete, processing prompt for session {session_id}")
+
         text_list = []
         for block in prompt:
             _type = (
@@ -105,6 +129,16 @@ class EchoAgent(Agent):
             )
         return PromptResponse(stop_reason="end_turn")
 
+    async def cancel(self, session_id: str, **kwargs: Any) -> None:
+        """Handle cancellation request"""
+        logging.info(f"Cancel request for session: {session_id}")
+        cancel_event = self._cancel_events.get(session_id)
+        if cancel_event is None:
+            logging.warning(f"Session not found for cancel: {session_id}")
+            return
+        # Signal cancellation
+        cancel_event.set()
+        logging.info(f"Cancel event set for session: {session_id}")
 
 def number_lines(content: str) -> list[str]:
     return [f"{k + 1}\t {v}" for k, v in enumerate(content.split("\n"))]

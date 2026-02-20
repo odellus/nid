@@ -30,3 +30,8 @@ Nah I think I just need to do this by hand. Ask the agent as a super sophisticat
 
 
 but yeah I think the thing I need to do is to create a bunch of examples of what I want to do in the sandbox and have the echo agent just get progressively more sophisticated. Slash commands, skills, the works, all disconnected from the agent for development velocity.
+
+
+
+
+okay we've got [async-react](./sandbox/async-react/README.md)

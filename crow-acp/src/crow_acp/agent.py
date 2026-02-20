@@ -107,6 +107,7 @@ class AcpAgent(Agent):
     """
 
     _conn: Client
+    _cancel_events: dict[str, asyncio.Event] = {}  # session_id -> cancel_event
 
     def __init__(self, config: Config | None = None) -> None:
         """
