@@ -6,7 +6,7 @@ import os
 
 import httpx
 from dotenv import load_dotenv
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 load_dotenv()
 
@@ -24,9 +24,9 @@ def configure_llm(
     api_key: str | None = None,
     base_url: str | None = None,
     debug: bool = False,
-) -> OpenAI:
+) -> AsyncOpenAI:
     """
-    Configure LLM client.
+    Configure async LLM client.
     
     Args:
         api_key: API key (defaults to ZAI_API_KEY env var)
@@ -34,17 +34,17 @@ def configure_llm(
         debug: Whether to log requests
         
     Returns:
-        Configured OpenAI client
+        Configured AsyncOpenAI client
     """
     api_key = api_key or os.getenv("ZAI_API_KEY")
     base_url = base_url or os.getenv("ZAI_BASE_URL")
     
     if debug:
-        http_client = httpx.Client(event_hooks={"request": [log_request]})
+        http_client = httpx.AsyncClient(event_hooks={"request": [log_request]})
     else:
         http_client = None
     
-    return OpenAI(
+    return AsyncOpenAI(
         api_key=api_key,
         base_url=base_url,
         http_client=http_client,

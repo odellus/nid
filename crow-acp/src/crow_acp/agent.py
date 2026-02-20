@@ -107,7 +107,6 @@ class AcpAgent(Agent):
     """
 
     _conn: Client
-    _cancel_events: dict[str, asyncio.Event] = {}  # session_id -> cancel_event
 
     def __init__(self, config: Config | None = None) -> None:
         """
@@ -129,6 +128,9 @@ class AcpAgent(Agent):
         self._session: Session | None = None
         self._mcp_clients: dict[str, Any] = {}  # session_id -> mcp_client
         self._tools: dict[str, list[dict]] = {}  # session_id -> tools
+        self._cancel_events: dict[str, asyncio.Event] = {}  # session_id -> cancel_event
+        self._streaming_tasks: dict[str, asyncio.Task] = {}  # session_id -> streaming_task
+        self._state_accumulators: dict[str, dict] = {}  # session_id -> partial state for cancellation
         self._llm = configure_llm(debug=False)
 
     def on_connect(self, conn: Client) -> None:
@@ -208,6 +210,7 @@ class AcpAgent(Agent):
         self._session_id = session.session_id
         self._mcp_clients[session.session_id] = mcp_client
         self._tools[session.session_id] = tools
+        self._cancel_events[session.session_id] = asyncio.Event()
 
         logger.info("Created session: %s with %d tools", session.session_id, len(tools))
         return NewSessionResponse(session_id=session.session_id, modes=None)
@@ -250,6 +253,7 @@ class AcpAgent(Agent):
             self._session_id = session.session_id
             self._mcp_clients[session_id] = mcp_client
             self._tools[session_id] = tools
+            self._cancel_events[session_id] = asyncio.Event()
 
             # TODO: Replay conversation history to client
 
@@ -281,6 +285,7 @@ class AcpAgent(Agent):
         Handle prompt request - main entry point for user messages.
 
         This is where we run the react loop and stream updates back.
+        Uses Task-based cancellation for immediate interruption.
         """
         logger.info("Prompt request for session: %s", session_id)
 
@@ -318,51 +323,116 @@ class AcpAgent(Agent):
         # Add user message to session
         session.add_message("user", " ".join(text_list))
 
-        # Run agent loop and stream updates
+        # Clear cancel event for this new prompt
+        cancel_event = self._cancel_events.get(session_id)
+        if cancel_event:
+            cancel_event.clear()
+
+        # Initialize state accumulator for this prompt (for cancellation persistence)
+        self._state_accumulators[session_id] = {
+            'thinking': [],
+            'content': [],
+            'tool_call_inputs': []
+        }
+
+        # Create a queue for streaming chunks
+        chunk_queue: asyncio.Queue = asyncio.Queue()
+        
+        # Flag to signal completion
+        completed = asyncio.Event()
+        stop_reason = "end_turn"
+
+        async def streaming_worker():
+            """Worker that runs the react loop and puts chunks in queue."""
+            nonlocal stop_reason
+            try:
+                async for chunk in self._react_loop(session_id):
+                    await chunk_queue.put(chunk)
+                stop_reason = "end_turn"
+            except asyncio.CancelledError:
+                logger.info("Streaming worker cancelled")
+                stop_reason = "cancelled"
+                raise
+            except Exception as e:
+                logger.error("Error in streaming worker: %s", e, exc_info=True)
+                stop_reason = "end_turn"
+            finally:
+                completed.set()
+
+        # Create and store the streaming task
+        streaming_task = asyncio.create_task(streaming_worker())
+        self._streaming_tasks[session_id] = streaming_task
+
+        # Stream chunks back to client
         try:
-            async for chunk in self._react_loop(session_id):
+            while not completed.is_set() or not chunk_queue.empty():
+                try:
+                    # Use wait_for to allow checking completion
+                    chunk = await asyncio.wait_for(chunk_queue.get(), timeout=0.1)
+                except asyncio.TimeoutError:
+                    continue
+
                 chunk_type = chunk.get("type")
 
                 if chunk_type == "content":
-                    # Send agent message chunk
                     await self._conn.session_update(
                         session_id,
                         update_agent_message(text_block(chunk["token"])),
                     )
 
                 elif chunk_type == "thinking":
-                    # Send agent thought chunk (if client supports it)
                     await self._conn.session_update(
                         session_id,
                         update_agent_thought(text_block(chunk["token"])),
                     )
 
                 elif chunk_type == "tool_call":
-                    # Send tool call start
                     name, first_arg = chunk["token"]
-                    # TODO: Send ToolCallStart notification
                     logger.debug("Tool call: %s(%s", name, first_arg)
 
                 elif chunk_type == "tool_args":
-                    # Send tool call progress
-                    # TODO: Send ToolCallProgress notification
                     logger.debug("Tool args: %s", chunk["token"])
 
                 elif chunk_type == "final_history":
-                    # Done
                     break
 
-            return PromptResponse(stop_reason="end_turn")
+            return PromptResponse(stop_reason=stop_reason)
+
+        except asyncio.CancelledError:
+            logger.info("Prompt cancelled")
+            # Persist partial state before returning
+            state = self._state_accumulators.get(session_id)
+            if state:
+                session.add_assistant_response(
+                    state['thinking'],
+                    state['content'],
+                    state['tool_call_inputs'],
+                    []
+                )
+            return PromptResponse(stop_reason="cancelled")
 
         except Exception as e:
             logger.error("Error in prompt handling: %s", e, exc_info=True)
-            # Use 'end_turn' even on errors to satisfy ACP schema requirements
             return PromptResponse(stop_reason="end_turn")
 
+        finally:
+            # Clean up task reference
+            self._streaming_tasks.pop(session_id, None)
+
     async def cancel(self, session_id: str, **kwargs: Any) -> None:
-        """Handle cancellation"""
+        """Handle cancellation by cancelling the streaming task."""
         logger.info("Cancel request for session: %s", session_id)
-        # TODO: Implement cancellation
+        
+        # Cancel the streaming task if it exists
+        streaming_task = self._streaming_tasks.get(session_id)
+        if streaming_task and not streaming_task.done():
+            logger.info("Cancelling streaming task for session: %s", session_id)
+            streaming_task.cancel()
+            
+            # Also set the cancel event for the react loop to check
+            cancel_event = self._cancel_events.get(session_id)
+            if cancel_event:
+                cancel_event.set()
 
     async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         """Handle extension methods"""
@@ -384,7 +454,7 @@ class AcpAgent(Agent):
         await self._exit_stack.aclose()
         logger.info("Cleanup complete")
 
-    def _send_request(self, session_id: str):
+    async def _send_request(self, session_id: str):
         """
         Send request to LLM.
 
@@ -397,7 +467,7 @@ class AcpAgent(Agent):
         session = self._sessions[session_id]
         tools = self._tools[session_id]
 
-        return self._llm.chat.completions.create(
+        return await self._llm.chat.completions.create(
             model="glm-5",
             messages=session.messages,
             tools=tools,
@@ -460,12 +530,13 @@ class AcpAgent(Agent):
 
         return thinking, content, tool_calls, tool_call_id, new_token
 
-    def _process_response(self, response):
+    async def _process_response(self, response, state_accumulator: dict | None = None):
         """
         Process streaming response from LLM.
 
         Args:
             response: Streaming response from LLM
+            state_accumulator: Optional dict to expose partial state externally
 
         Yields:
             Tuple of (message_type, token) for each chunk
@@ -476,7 +547,16 @@ class AcpAgent(Agent):
         thinking, content, tool_calls, tool_call_id = [], [], {}, None
         final_usage = None
 
-        for chunk in response:
+        # Initialize state accumulator if provided
+        if state_accumulator is not None:
+            state_accumulator.update({
+                'thinking': thinking,
+                'content': content,
+                'tool_calls': tool_calls,
+                'tool_call_inputs': []
+            })
+
+        async for chunk in response:
             # Capture usage from the chunk (if present)
             if hasattr(chunk, "usage") and chunk.usage:
                 final_usage = {
@@ -488,17 +568,25 @@ class AcpAgent(Agent):
             thinking, content, tool_calls, tool_call_id, new_token = (
                 self._process_chunk(chunk, thinking, content, tool_calls, tool_call_id)
             )
+            
+            # Update state accumulator after each chunk
+            if state_accumulator is not None:
+                state_accumulator['thinking'] = thinking
+                state_accumulator['content'] = content
+                state_accumulator['tool_calls'] = tool_calls
+            
             # And we yield so the streaming magic happens
             msg_type, token = new_token
             if msg_type:
                 yield msg_type, token
 
-        return (
-            thinking,
-            content,
-            self._process_tool_call_inputs(tool_calls),
-            final_usage,
-        )
+        # Final update to accumulator
+        tool_call_inputs = self._process_tool_call_inputs(tool_calls)
+        if state_accumulator is not None:
+            state_accumulator['tool_call_inputs'] = tool_call_inputs
+
+        # Yield final result
+        yield "final", (thinking, content, tool_call_inputs, final_usage)
 
     def _process_tool_call_inputs(self, tool_calls: dict) -> list[dict]:
         """
@@ -573,7 +661,7 @@ class AcpAgent(Agent):
 
     async def _react_loop(self, session_id: str, max_turns: int = 50000):
         """
-        Main ReAct loop.
+        Main ReAct loop with cancellation support.
 
         Args:
             session_id: Session ID to get session and tools
@@ -583,20 +671,48 @@ class AcpAgent(Agent):
             Dictionary with 'type' and 'token' or 'messages' keys
         """
         session = self._sessions[session_id]
+        cancel_event = self._cancel_events.get(session_id)
 
-        for _ in range(max_turns):
+        for turn in range(max_turns):
+            # Check at start of turn
+            if cancel_event and cancel_event.is_set():
+                logger.info(f"Cancelled at start of turn {turn}")
+                return
+
             # Send request to LLM
-            response = self._send_request(session_id)
+            response = await self._send_request(session_id)
+
+            # Use global state accumulator for cancellation persistence
+            state_accumulator = self._state_accumulators.get(session_id, {
+                'thinking': [],
+                'content': [],
+                'tool_call_inputs': []
+            })
 
             # Process streaming response
-            gen = self._process_response(response)
-            while True:
-                try:
-                    msg_type, token = next(gen)
-                    yield {"type": msg_type, "token": token}
-                except StopIteration as e:
-                    thinking, content, tool_call_inputs, usage = e.value
-                    break
+            thinking, content, tool_call_inputs, usage = [], [], [], None
+            try:
+                async for msg_type, token in self._process_response(response, state_accumulator):
+                    if msg_type == "final":
+                        thinking, content, tool_call_inputs, usage = token
+                    else:
+                        yield {"type": msg_type, "token": token}
+            except asyncio.CancelledError:
+                logger.info("React loop cancelled mid-stream")
+                # Persist partial state from accumulator
+                session.add_assistant_response(
+                    state_accumulator['thinking'],
+                    state_accumulator['content'],
+                    state_accumulator['tool_call_inputs'],
+                    []
+                )
+                raise
+
+            # Check before tool execution
+            if cancel_event and cancel_event.is_set():
+                logger.info("Cancelled before tool execution")
+                session.add_assistant_response(thinking, content, tool_call_inputs, [])
+                return
 
             # If no tool calls, we're done
             if not tool_call_inputs:
@@ -606,6 +722,12 @@ class AcpAgent(Agent):
 
             # Execute tools
             tool_results = await self._execute_tool_calls(session_id, tool_call_inputs)
+
+            # Check after tool execution
+            if cancel_event and cancel_event.is_set():
+                logger.info("Cancelled after tool execution")
+                session.add_assistant_response(thinking, content, tool_call_inputs, tool_results)
+                return
 
             # Add response to session
             session.add_assistant_response(

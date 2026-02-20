@@ -34,4 +34,21 @@ but yeah I think the thing I need to do is to create a bunch of examples of what
 
 
 
-okay we've got [async-react](./sandbox/async-react/README.md)
+okay we've got [async-react](./sandbox/async-react/README.md) set up and a plan for how to do cancellations on a more simplified level. Seems we need to append an AsyncEvent to each session to allow for the session/cancel update to kill everything and the idea is that since we're using AsyncOpenAI now it will trace all the way back to the provider and end session in a way that we can pick up right where we left off.
+
+which is one of the reasons I was thinking about making persistence a callback, because it basically already is a callback and I want to formalize the get/set operations over our session state, which apparently now needs a AsyncEvent attached?
+
+we looked at how kimi-cli does it in refs/kimi-li/src/kimi_cli/acp but they're going to have a very different approach that us because we're using native ACP but still a long to learn from
+
+
+
+[@23-cancellation-solid-plan.md](file:///home/thomas/src/projects/mcp-testing/docs/essays/23-cancellation-solid-plan.md) 
+
+[@echo_agent.py](file:///home/thomas/src/projects/mcp-testing/sandbox/crow-acp-learning/echo_agent.py) 
+
+[@streaming_async_react.py](file:///home/thomas/src/projects/mcp-testing/sandbox/async-react/streaming_async_react.py) 
+
+[@TODO.md (37:43)](file:///home/thomas/src/projects/mcp-testing/crow-acp/TODO.md#L37:43)
+
+
+Yeah cancellation is the real highest priority even moreso than tool calling. Like what good does seeing what the agent is up to do if you can't stop it?
