@@ -198,6 +198,8 @@ class AcpAgent(Agent):
         self._tool_call_ids: dict[
             str, str
         ] = {}  # session_id -> current turn_id for tool calls
+        # Terminal state tracking for ACP client terminals (fresh each call, so we track state)
+        self._terminal_state: dict[str, dict] = {}  # session_id -> {cwd, env}
         self._llm = configure_llm(debug=False)
 
     def on_connect(self, conn: Client) -> None:
