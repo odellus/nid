@@ -5,11 +5,11 @@ from urllib.request import url2pathname
 
 
 def number_lines(content: str) -> list[str]:
-    return [f"{k + 1}\t {v}" for k, v in enumerate(content.split("\n"))]
+    return [f"{k:6}\t{line}" for k, line in enumerate(content.split("\n"))]
 
 
 def context_fetcher(uri: str) -> str:
-    header = [uri]
+
     res = find_line_numbers(uri)
     if res["status"] == "success":
         # pull out everything before the #L
@@ -34,7 +34,7 @@ def context_fetcher(uri: str) -> str:
             content = f.read()
         content = number_lines(content)
 
-    return "\n".join(header + content)
+    return "\n".join([file_path] + content)
 
 
 def uri_to_path(uri: str) -> str:

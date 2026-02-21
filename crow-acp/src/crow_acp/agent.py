@@ -197,9 +197,8 @@ class AcpAgent(Agent):
         ] = {}  # session_id -> partial state for cancellation
         self._tool_call_ids: dict[
             str, str
-        ] = {}  # session_id -> current turn_id for tool calls
-        # Terminal state tracking for ACP client terminals (fresh each call, so we track state)
-        self._terminal_state: dict[str, dict] = {}  # session_id -> {cwd, env}
+        ] = {}  # session_id -> persistent terminal_id for stateful terminals
+        # Terminal state tracking for ACP client terminals (persist env/cwd between calls)
         self._llm = configure_llm(debug=False)
 
     def on_connect(self, conn: Client) -> None:
@@ -750,7 +749,7 @@ class AcpAgent(Agent):
                 arg_dict = maximal_deserialize(tool_args)
 
                 # Intercept terminal tool if ACP client supports it
-                if tool_name == "crow-mcp_terminal" and use_acp_terminal:
+                if tool_name == "crow-mcp_1terminal" and use_acp_terminal:
                     result_content = await self._execute_acp_terminal(
                         session_id=session_id,
                         tool_call_id=llm_tool_call_id,
