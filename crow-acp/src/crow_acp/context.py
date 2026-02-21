@@ -3,6 +3,8 @@ from typing import Any
 from urllib.parse import urlparse
 from urllib.request import url2pathname
 
+from directory_tree import DisplayTree
+
 
 def number_lines(content: str) -> list[str]:
     return [f"{k:6}\t{line}" for k, line in enumerate(content.split("\n"))]
@@ -56,3 +58,10 @@ def find_line_numbers(uri: str) -> dict[str, Any]:
         response["start"] = None
         response["end"] = None
     return response
+
+
+def get_directory_tree(cwd: str) -> str:
+    """Returns a string representation of the directory tree rooted at cwd."""
+    ignores = ["node_modules", "*.egg_info", "__pycache__", ".venv", "refs"]
+    tree = DisplayTree(stringRep=True, dirPath=cwd, ignoreList=ignores, maxDepth=5.0)
+    return tree

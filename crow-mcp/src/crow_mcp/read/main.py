@@ -23,9 +23,7 @@ def _is_binary_file(path: Path) -> bool:
                 text = chunk.decode("utf-8")
                 if "\ufffd" in text:
                     return True
-                control_chars = sum(
-                    1 for c in text if ord(c) < 9 or (13 < ord(c) < 32)
-                )
+                control_chars = sum(1 for c in text if ord(c) < 9 or (13 < ord(c) < 32))
                 return control_chars / len(text) > 0.3 if text else False
             except UnicodeDecodeError:
                 return True
@@ -83,7 +81,7 @@ async def read(
     Args:
         file_path: The absolute path to the file to read
         offset: Line number to start reading from (1-indexed, optional)
-        limit: Maximum number of lines to read (optional, default 2000)
+        limit: Maximum number of lines to read (optional, default 100)
 
     Returns:
         File contents with line numbers, or an error message

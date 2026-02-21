@@ -208,6 +208,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "agent-client-protocol" },
+    { name = "directory-tree" },
     { name = "fastmcp" },
     { name = "ipython" },
     { name = "jinja2" },
@@ -220,6 +221,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "agent-client-protocol", specifier = ">=0.8.1" },
+    { name = "directory-tree", specifier = ">=1.0.0" },
     { name = "fastmcp", specifier = ">=2.14.5" },
     { name = "ipython", specifier = ">=9.10.0" },
     { name = "jinja2", specifier = ">=3.1.6" },
@@ -307,6 +309,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/43/fa/6d96a0978d19e17b68d634497769987b16c8f4cd0a7a05048bec693caa6b/decorator-5.2.1.tar.gz", hash = "sha256:65f266143752f734b0a7cc83c46f4618af75b8c5911b00ccb61d0ac9b6da0360", size = 56711, upload-time = "2025-02-24T04:41:34.073Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/4e/8c/f3147f5c4b73e7550fe5f9352eaa956ae838d5c51eb58e7a25b9f3e2643b/decorator-5.2.1-py3-none-any.whl", hash = "sha256:d316bb415a2d9e2d2b3abcc4084c6502fc09240e292cd76a76afc106a1c8e04a", size = 9190, upload-time = "2025-02-24T04:41:32.565Z" },
+]
+
+[[package]]
+name = "directory-tree"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ba/48/7dbb436a54e0b727ba81ccb1bcf7875e875f826dcf43e01b9ad52726b179/directory_tree-1.0.0.tar.gz", hash = "sha256:d65b404d7e561db62e6321f36c612cd12da2e9fbe5cbae98da73ce14c0ec910d", size = 28347, upload-time = "2024-08-18T17:36:59.19Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4e/fb/047673ca107e735c0dd9e03811a6f0c8c22ed72d6db596134399580c80c5/directory_tree-1.0.0-py3-none-any.whl", hash = "sha256:2484ba5e9d35e087703913cc85e920f08b9b942859b9f5a0eae24699d3364734", size = 23001, upload-time = "2024-08-18T17:36:57.261Z" },
 ]
 
 [[package]]

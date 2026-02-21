@@ -16,6 +16,7 @@ import os
 import uuid
 from contextlib import AsyncExitStack, suppress
 from contextvars import ContextVar
+from datetime import datetime
 from pathlib import Path
 from threading import ExceptHookArgs
 from typing import Any
@@ -38,6 +39,8 @@ from acp.helpers import (
     ToolCallContentVariant,
     start_edit_tool_call,
     start_read_tool_call,
+    text_block,
+    tool_content,
     tool_diff_content,
     update_tool_call,
 )
@@ -71,7 +74,7 @@ from fastmcp import Client as MCPClient
 from json_schema_to_pydantic import create_model
 
 from crow_acp.config import Config, get_default_config
-from crow_acp.context import context_fetcher
+from crow_acp.context import context_fetcher, get_directory_tree
 from crow_acp.llm import configure_llm
 from crow_acp.mcp_client import create_mcp_client_from_acp, get_tools
 from crow_acp.session import Session, lookup_or_create_prompt
@@ -89,6 +92,8 @@ TERMINAL_TOOL = "crow-mcp_terminal"
 WRITE_TOOL = "crow-mcp_write"
 READ_TOOL = "crow-mcp_read"
 EDIT_TOOL = "crow-mcp_edit"
+SEARCH_TOOL = "crow-mcp_web_search"
+FETCH_TOOL = "crow-mcp_web_fetch"
 
 
 def setup_logger(name="crow_logger", log_file=LOG_PATH, max_mb=5, max_files=3):
@@ -288,20 +293,22 @@ class AcpAgent(Agent):
         tools = await get_tools(mcp_client)
 
         # Load prompt template and get or create prompt_id
-        from datetime import datetime
-        from pathlib import Path
 
         template_path = Path(__file__).parent / "prompts" / "system_prompt.jinja2"
         template = template_path.read_text()
         prompt_id = lookup_or_create_prompt(
             template, name="crow-default", db_path=self._db_path
         )
-
+        display_tree = get_directory_tree(cwd)
+        agent_path = os.path.join(cwd, "AGENTS.md")
+        with open(agent_path, "r") as f:
+            agents_content = f.read()
         session = Session.create(
             prompt_id=prompt_id,
             prompt_args={
                 "workspace": cwd,
-                "datetime": datetime.now().isoformat(),
+                "display_tree": display_tree,
+                "agents_content": agents_content,
             },
             tool_definitions=tools,
             request_params={"temperature": 0.2},
@@ -796,6 +803,22 @@ class AcpAgent(Agent):
                         tool_call_id=llm_tool_call_id,
                         args=arg_dict,
                     )
+                elif tool_name == SEARCH_TOOL:
+                    result_content = await self._execute_acp_tool(
+                        session_id=session_id,
+                        tool_call_id=llm_tool_call_id,
+                        tool_name=tool_name,
+                        args=arg_dict,
+                        kind="search",
+                    )
+                elif tool_name == FETCH_TOOL:
+                    result_content = await self._execute_acp_tool(
+                        session_id=session_id,
+                        tool_call_id=llm_tool_call_id,
+                        tool_name=tool_name,
+                        args=arg_dict,
+                        kind="fetch",
+                    )
                 else:
                     # Send tool call start
                     await self._conn.session_update(
@@ -823,13 +846,13 @@ class AcpAgent(Agent):
                     result = await mcp_client.call_tool(tool_name, arg_dict)
                     result_content = result.content[0].text
 
-                    # Send completion update
+                    # Send completion update with content
                     await self._conn.session_update(
                         session_id=session_id,
-                        update=ToolCallProgress(
-                            session_update="tool_call_update",
-                            tool_call_id=acp_tool_call_id,
+                        update=update_tool_call(
+                            acp_tool_call_id,
                             status="completed",
+                            content=[tool_content(text_block(result_content))],
                         ),
                     )
 
@@ -1080,10 +1103,14 @@ class AcpAgent(Agent):
             )
             content = response.content or ""
 
-            # 4. Send completion update
+            # 4. Send completion update with file content
             await self._conn.session_update(
                 session_id=session_id,
-                update=update_tool_call(acp_tool_call_id, status="completed"),
+                update=update_tool_call(
+                    acp_tool_call_id,
+                    status="completed",
+                    content=[tool_content(text_block(content))],
+                ),
             )
 
             return content
@@ -1216,7 +1243,11 @@ class AcpAgent(Agent):
                 update=update_tool_call(
                     acp_tool_call_id,
                     status="in_progress",
-                    content=[tool_diff_content(path=path, new_text=new_text, old_text=old_text)],
+                    content=[
+                        tool_diff_content(
+                            path=path, new_text=new_text, old_text=old_text
+                        )
+                    ],
                 ),
             )
 
@@ -1239,6 +1270,83 @@ class AcpAgent(Agent):
 
         except Exception as e:
             logger.error(f"Error executing edit: {e}", exc_info=True)
+            await self._conn.session_update(
+                session_id=session_id,
+                update=update_tool_call(acp_tool_call_id, status="failed"),
+            )
+            return f"Error: {str(e)}"
+
+    async def _execute_acp_tool(
+        self,
+        session_id: str,
+        tool_call_id: str,
+        tool_name: str,
+        args: dict[str, Any],
+        kind: str = "other",
+    ) -> str:
+        """
+        Execute a generic tool via MCP and report with content.
+
+        Used for tools like search, fetch, etc. that return text content
+        to display to the user.
+
+        Args:
+            session_id: ACP session ID
+            tool_call_id: LLM tool call ID
+            tool_name: Name of the MCP tool to call
+            args: Tool arguments from LLM
+            kind: Tool kind for display (search, fetch, other)
+
+        Returns:
+            Result string from the tool
+        """
+        # Build ACP tool call ID from turn_id + llm tool call id
+        turn_id = _current_turn_id.get()
+        acp_tool_call_id = f"{turn_id}/{tool_call_id}" if turn_id else tool_call_id
+
+        try:
+            # 1. Send tool call start
+            title = f"{tool_name}"
+            await self._conn.session_update(
+                session_id=session_id,
+                update=ToolCallStart(
+                    session_update="tool_call",
+                    tool_call_id=acp_tool_call_id,
+                    title=title,
+                    kind=kind,
+                    status="pending",
+                ),
+            )
+
+            # 2. Send in_progress update
+            await self._conn.session_update(
+                session_id=session_id,
+                update=update_tool_call(acp_tool_call_id, status="in_progress"),
+            )
+
+            # 3. Execute tool via MCP
+            logger.info(f"Executing tool via MCP: {tool_name}")
+            mcp_client = self._mcp_clients.get(session_id)
+            if not mcp_client:
+                raise RuntimeError(f"No MCP client for session {session_id}")
+            result = await mcp_client.call_tool(tool_name, args)
+            result_content = result.content[0].text
+
+            # 4. Send completion update with content
+            status = "completed" if "Error" not in result_content else "failed"
+            await self._conn.session_update(
+                session_id=session_id,
+                update=update_tool_call(
+                    acp_tool_call_id,
+                    status=status,
+                    content=[tool_content(text_block(result_content))],
+                ),
+            )
+
+            return result_content
+
+        except Exception as e:
+            logger.error(f"Error executing tool {tool_name}: {e}", exc_info=True)
             await self._conn.session_update(
                 session_id=session_id,
                 update=update_tool_call(acp_tool_call_id, status="failed"),

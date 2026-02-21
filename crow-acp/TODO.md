@@ -15,7 +15,7 @@
   1.  exposing get/set methods on session data
   2. expose `session/new` and `session/initialize` methods so extension can create new session with new data
   3. expose `session/prompt` with method so extensions/callbacks can use agent's warm kv cache for fast summarization during compaction
-- The key insight is that synchronous blocking code (like `time.sleep()` in the terminal polling loop) inside an `async def` function will block the entire event loop - which could cause hangs if the MCP transport needs to do I/O simultaneously. The fix would be `asyncio.to_thread()` or making the polling truly async.
+- Fix intermittent error in terminal tool since upgrade The key insight is that synchronous blocking code (like `time.sleep()` in the terminal polling loop) inside an `async def` function will block the entire event loop - which could cause hangs if the MCP transport needs to do I/O simultaneously. The fix would be `asyncio.to_thread()` or making the polling truly async. 
 
 
 

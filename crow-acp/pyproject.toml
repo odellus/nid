@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "agent-client-protocol>=0.8.1",
+    "directory-tree>=1.0.0",
     "fastmcp>=2.14.5",
     "ipython>=9.10.0",
     "jinja2>=3.1.6",
