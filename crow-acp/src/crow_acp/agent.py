@@ -12,9 +12,11 @@ No wrapper, no nested agents - just one clean Agent(acp.Agent) implementation.
 import asyncio
 import json
 import logging
+import os
 import uuid
 from contextlib import AsyncExitStack, suppress
 from contextvars import ContextVar
+from pathlib import Path
 from threading import ExceptHookArgs
 from typing import Any
 
@@ -53,6 +55,11 @@ from acp.schema import (
 
 # Context vars for turn/tool call tracking
 _current_turn_id: ContextVar[str | None] = ContextVar("current_turn_id", default=None)
+import logging
+import os
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+
 from fastmcp import Client as MCPClient
 from json_schema_to_pydantic import create_model
 
@@ -62,7 +69,52 @@ from crow_acp.llm import configure_llm
 from crow_acp.mcp_client import create_mcp_client_from_acp, get_tools
 from crow_acp.session import Session, lookup_or_create_prompt
 
-logger = logging.getLogger(__name__)
+# 1. Define paths safely
+HOME = Path(os.getenv("HOME", "~")).expanduser()
+LOG_DIR = HOME / ".crow"
+LOG_PATH = LOG_DIR / "crow-acp.log"
+
+# 2. Ensure the directory exists (prevents FileNotFoundError)
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def setup_logger(name="crow_logger", log_file=LOG_PATH, max_mb=5, max_files=3):
+    """
+    Sets up a rotating file logger.
+
+    :param name: Name of the logger.
+    :param log_file: Path object or string to the log file.
+    :param max_mb: Maximum size in Megabytes before rotating.
+    :param max_files: Maximum number of backup files to keep.
+    """
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.INFO)  # Set your base logging level here
+
+    # 3. Prevent duplicate log entries if this function is called multiple times
+    if not logger.handlers:
+        # 4. Set up the RotatingFileHandler
+        # maxBytes triggers the rotation, backupCount limits the total files
+        file_handler = RotatingFileHandler(
+            log_file, maxBytes=max_mb * 1024 * 1024, backupCount=max_files
+        )
+
+        # 5. Define a readable log format
+        formatter = logging.Formatter(
+            "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+        file_handler.setFormatter(formatter)
+
+        # 6. Attach the handler
+        logger.addHandler(file_handler)
+
+    return logger
+
+
+# Initialize and test
+logger = setup_logger()
+logger.info("Rotating logger initialized successfully!")
+logger.error("This is an example error message.")
 
 
 def maximal_deserialize(data):
@@ -137,9 +189,15 @@ class AcpAgent(Agent):
         self._mcp_clients: dict[str, Any] = {}  # session_id -> mcp_client
         self._tools: dict[str, list[dict]] = {}  # session_id -> tools
         self._cancel_events: dict[str, asyncio.Event] = {}  # session_id -> cancel_event
-        self._streaming_tasks: dict[str, asyncio.Task] = {}  # session_id -> streaming_task
-        self._state_accumulators: dict[str, dict] = {}  # session_id -> partial state for cancellation
-        self._tool_call_ids: dict[str, str] = {}  # session_id -> current turn_id for tool calls
+        self._streaming_tasks: dict[
+            str, asyncio.Task
+        ] = {}  # session_id -> streaming_task
+        self._state_accumulators: dict[
+            str, dict
+        ] = {}  # session_id -> partial state for cancellation
+        self._tool_call_ids: dict[
+            str, str
+        ] = {}  # session_id -> current turn_id for tool calls
         self._llm = configure_llm(debug=False)
 
     def on_connect(self, conn: Client) -> None:
@@ -157,15 +215,15 @@ class AcpAgent(Agent):
         logger.info("Initializing Agent")
         logger.info(f"Client capabilities: {client_capabilities}")
         logger.info(f"Client info: {client_info}")
-        
+
         self._client_capabilities = client_capabilities
-        
+
         # Check if client supports terminals
         if client_capabilities and getattr(client_capabilities, "terminal", False):
             logger.info("Client supports ACP terminals - will use client-side terminal")
         else:
             logger.info("Client does NOT support ACP terminals - will use MCP terminal")
-        
+
         return InitializeResponse(
             protocol_version=PROTOCOL_VERSION,
             agent_capabilities=AgentCapabilities(
@@ -218,10 +276,12 @@ class AcpAgent(Agent):
         # Load prompt template and get or create prompt_id
         from datetime import datetime
         from pathlib import Path
-        
+
         template_path = Path(__file__).parent / "prompts" / "system_prompt.jinja2"
         template = template_path.read_text()
-        prompt_id = lookup_or_create_prompt(template, name="crow-default", db_path=self._db_path)
+        prompt_id = lookup_or_create_prompt(
+            template, name="crow-default", db_path=self._db_path
+        )
 
         session = Session.create(
             prompt_id=prompt_id,
@@ -367,14 +427,14 @@ class AcpAgent(Agent):
 
         # Initialize state accumulator for this prompt (for cancellation persistence)
         self._state_accumulators[session_id] = {
-            'thinking': [],
-            'content': [],
-            'tool_call_inputs': []
+            "thinking": [],
+            "content": [],
+            "tool_call_inputs": [],
         }
 
         # Create a queue for streaming chunks
         chunk_queue: asyncio.Queue = asyncio.Queue()
-        
+
         # Flag to signal completion
         completed = asyncio.Event()
         stop_reason = "end_turn"
@@ -441,10 +501,7 @@ class AcpAgent(Agent):
             state = self._state_accumulators.get(session_id)
             if state:
                 session.add_assistant_response(
-                    state['thinking'],
-                    state['content'],
-                    state['tool_call_inputs'],
-                    []
+                    state["thinking"], state["content"], state["tool_call_inputs"], []
                 )
             return PromptResponse(stop_reason="cancelled")
 
@@ -461,13 +518,13 @@ class AcpAgent(Agent):
     async def cancel(self, session_id: str, **kwargs: Any) -> None:
         """Handle cancellation by cancelling the streaming task."""
         logger.info("Cancel request for session: %s", session_id)
-        
+
         # Cancel the streaming task if it exists
         streaming_task = self._streaming_tasks.get(session_id)
         if streaming_task and not streaming_task.done():
             logger.info("Cancelling streaming task for session: %s", session_id)
             streaming_task.cancel()
-            
+
             # Also set the cancel event for the react loop to check
             cancel_event = self._cancel_events.get(session_id)
             if cancel_event:
@@ -588,12 +645,14 @@ class AcpAgent(Agent):
 
         # Initialize state accumulator if provided
         if state_accumulator is not None:
-            state_accumulator.update({
-                'thinking': thinking,
-                'content': content,
-                'tool_calls': tool_calls,
-                'tool_call_inputs': []
-            })
+            state_accumulator.update(
+                {
+                    "thinking": thinking,
+                    "content": content,
+                    "tool_calls": tool_calls,
+                    "tool_call_inputs": [],
+                }
+            )
 
         async for chunk in response:
             # Capture usage from the chunk (if present)
@@ -607,13 +666,13 @@ class AcpAgent(Agent):
             thinking, content, tool_calls, tool_call_id, new_token = (
                 self._process_chunk(chunk, thinking, content, tool_calls, tool_call_id)
             )
-            
+
             # Update state accumulator after each chunk
             if state_accumulator is not None:
-                state_accumulator['thinking'] = thinking
-                state_accumulator['content'] = content
-                state_accumulator['tool_calls'] = tool_calls
-            
+                state_accumulator["thinking"] = thinking
+                state_accumulator["content"] = content
+                state_accumulator["tool_calls"] = tool_calls
+
             # And we yield so the streaming magic happens
             msg_type, token = new_token
             if msg_type:
@@ -622,7 +681,7 @@ class AcpAgent(Agent):
         # Final update to accumulator
         tool_call_inputs = self._process_tool_call_inputs(tool_calls)
         if state_accumulator is not None:
-            state_accumulator['tool_call_inputs'] = tool_call_inputs
+            state_accumulator["tool_call_inputs"] = tool_call_inputs
 
         # Yield final result
         yield "final", (thinking, content, tool_call_inputs, final_usage)
@@ -668,47 +727,116 @@ class AcpAgent(Agent):
         tool_results = []
 
         # Check if we should use ACP client terminal
-        use_acp_terminal = (
-            self._client_capabilities 
-            and getattr(self._client_capabilities, "terminal", False)
+        use_acp_terminal = self._client_capabilities and getattr(
+            self._client_capabilities, "terminal", False
         )
+
+        # Get turn_id for ACP tool call IDs
+        turn_id = _current_turn_id.get()
 
         for tool_call in tool_call_inputs:
             tool_name = tool_call["function"]["name"]
             tool_args = tool_call["function"]["arguments"]
-            
+            llm_tool_call_id = tool_call["id"]
+
+            # Build ACP tool call ID
+            acp_tool_call_id = (
+                f"{turn_id}/{llm_tool_call_id}" if turn_id else llm_tool_call_id
+            )
+
             try:
                 arg_dict = maximal_deserialize(tool_args)
 
                 # Intercept terminal tool if ACP client supports it
-                if tool_name == "terminal" and use_acp_terminal:
+                if tool_name == "crow-mcp_terminal" and use_acp_terminal:
                     result_content = await self._execute_acp_terminal(
                         session_id=session_id,
-                        tool_call_id=tool_call["id"],
+                        tool_call_id=llm_tool_call_id,
                         args=arg_dict,
                     )
                 else:
-                    # Use MCP for all other tools
+                    # Send tool call start
+                    await self._conn.session_update(
+                        session_id=session_id,
+                        update=ToolCallStart(
+                            session_update="tool_call",
+                            tool_call_id=acp_tool_call_id,
+                            title=f"{tool_name}",
+                            kind=self._get_tool_kind(tool_name),
+                            status="pending",
+                        ),
+                    )
+
+                    # Send in_progress update
+                    await self._conn.session_update(
+                        session_id=session_id,
+                        update=ToolCallProgress(
+                            session_update="tool_call_update",
+                            tool_call_id=acp_tool_call_id,
+                            status="in_progress",
+                        ),
+                    )
+
+                    # Execute the MCP tool
                     result = await mcp_client.call_tool(tool_name, arg_dict)
                     result_content = result.content[0].text
+
+                    # Send completion update
+                    await self._conn.session_update(
+                        session_id=session_id,
+                        update=ToolCallProgress(
+                            session_update="tool_call_update",
+                            tool_call_id=acp_tool_call_id,
+                            status="completed",
+                        ),
+                    )
 
                 tool_results.append(
                     {
                         "role": "tool",
-                        "tool_call_id": tool_call["id"],
+                        "tool_call_id": llm_tool_call_id,
                         "content": result_content,
                     }
                 )
             except Exception as e:
                 logger.error(f"Error executing tool {tool_name}: {e}", exc_info=True)
+
+                # Send failure update
+                await self._conn.session_update(
+                    session_id=session_id,
+                    update=ToolCallProgress(
+                        session_update="tool_call_update",
+                        tool_call_id=acp_tool_call_id,
+                        status="failed",
+                    ),
+                )
+
                 tool_results.append(
                     {
                         "role": "tool",
-                        "tool_call_id": tool_call["id"],
+                        "tool_call_id": llm_tool_call_id,
                         "content": f"Error: {str(e)}",
                     }
                 )
         return tool_results
+
+    def _get_tool_kind(self, tool_name: str) -> str:
+        """Map tool names to ACP ToolKind."""
+        # Common MCP tool patterns
+        if tool_name in ("read_file", "read", "view", "list_directory", "list"):
+            return "read"
+        elif tool_name in ("write_file", "write", "edit", "create", "str_replace"):
+            return "edit"
+        elif tool_name in ("delete", "remove"):
+            return "delete"
+        elif tool_name in ("move", "rename"):
+            return "move"
+        elif tool_name in ("search", "grep", "find"):
+            return "search"
+        elif tool_name in ("terminal", "bash", "shell", "execute"):
+            return "execute"
+        else:
+            return "other"
 
     async def _execute_acp_terminal(
         self,
@@ -718,35 +846,35 @@ class AcpAgent(Agent):
     ) -> str:
         """
         Execute terminal command via ACP client terminal.
-        
+
         Maps the MCP terminal tool args to ACP client terminal:
         - command: The command to run
         - timeout: Max seconds to wait (default 30)
         - is_input: Not supported by ACP terminal (runs single commands)
         - reset: Not needed (ACP terminal is fresh each call)
-        
+
         Args:
             session_id: ACP session ID
             tool_call_id: LLM tool call ID
             args: Tool arguments from LLM
-            
+
         Returns:
             Result string with output and status
         """
         command = args.get("command", "")
         timeout_seconds = float(args.get("timeout") or 30.0)
-        
+
         # Build ACP tool call ID from turn_id + llm tool call id
         turn_id = _current_turn_id.get()
         acp_tool_call_id = f"{turn_id}/{tool_call_id}" if turn_id else tool_call_id
-        
+
         # Get session state for cwd
         session = self._sessions.get(session_id)
-        cwd = session.cwd if session and hasattr(session, 'cwd') else "/tmp"
-        
+        cwd = session.cwd if session and hasattr(session, "cwd") else "/tmp"
+
         terminal_id: str | None = None
         timed_out = False
-        
+
         try:
             # 1. Send tool call start
             await self._conn.session_update(
@@ -759,7 +887,7 @@ class AcpAgent(Agent):
                     status="pending",
                 ),
             )
-            
+
             # 2. Create terminal via ACP client
             logger.info(f"Creating ACP terminal for command: {command}")
             terminal_response = await self._conn.create_terminal(
@@ -770,7 +898,7 @@ class AcpAgent(Agent):
             )
             terminal_id = terminal_response.terminal_id
             logger.info(f"Terminal created: {terminal_id}")
-            
+
             # 3. Send tool call update with terminal content for live display
             await self._conn.session_update(
                 session_id=session_id,
@@ -786,7 +914,7 @@ class AcpAgent(Agent):
                     ],
                 ),
             )
-            
+
             # 4. Wait for terminal to exit with timeout
             exit_code = None
             exit_signal = None
@@ -798,31 +926,33 @@ class AcpAgent(Agent):
                     )
                     exit_code = exit_response.exit_code
                     exit_signal = exit_response.signal
-                    logger.info(f"Terminal exited with code: {exit_code}, signal: {exit_signal}")
+                    logger.info(
+                        f"Terminal exited with code: {exit_code}, signal: {exit_signal}"
+                    )
             except TimeoutError:
                 logger.warning(f"Terminal timed out after {timeout_seconds}s")
                 timed_out = True
                 await self._conn.kill_terminal(
                     session_id=session_id, terminal_id=terminal_id
                 )
-            
+
             # 5. Get final output
             output_response = await self._conn.terminal_output(
                 session_id=session_id, terminal_id=terminal_id
             )
             output = output_response.output
-            
+
             truncated_note = (
                 " Output was truncated." if output_response.truncated else ""
             )
-            
+
             # 6. Send final tool call update
             final_status = (
                 "failed"
                 if (exit_code and exit_code != 0) or exit_signal or timed_out
                 else "completed"
             )
-            
+
             await self._conn.session_update(
                 session_id=session_id,
                 update=ToolCallProgress(
@@ -831,7 +961,7 @@ class AcpAgent(Agent):
                     status=final_status,
                 ),
             )
-            
+
             # 7. Build result message
             if timed_out:
                 return f"⏱️ Command killed by timeout ({timeout_seconds}s){truncated_note}\n\nOutput:\n{output}"
@@ -841,11 +971,11 @@ class AcpAgent(Agent):
                 return f"❌ Command failed with exit code: {exit_code}{truncated_note}\n\nOutput:\n{output}"
             else:
                 return f"✅ Command executed successfully{truncated_note}\n\nOutput:\n{output}"
-                
+
         except Exception as e:
             logger.error(f"Error executing ACP terminal: {e}", exc_info=True)
             return f"Error: {str(e)}"
-            
+
         finally:
             # 8. Release terminal if created
             if terminal_id:
@@ -879,16 +1009,16 @@ class AcpAgent(Agent):
             response = await self._send_request(session_id)
 
             # Use global state accumulator for cancellation persistence
-            state_accumulator = self._state_accumulators.get(session_id, {
-                'thinking': [],
-                'content': [],
-                'tool_call_inputs': []
-            })
+            state_accumulator = self._state_accumulators.get(
+                session_id, {"thinking": [], "content": [], "tool_call_inputs": []}
+            )
 
             # Process streaming response
             thinking, content, tool_call_inputs, usage = [], [], [], None
             try:
-                async for msg_type, token in self._process_response(response, state_accumulator):
+                async for msg_type, token in self._process_response(
+                    response, state_accumulator
+                ):
                     if msg_type == "final":
                         thinking, content, tool_call_inputs, usage = token
                     else:
@@ -897,10 +1027,10 @@ class AcpAgent(Agent):
                 logger.info("React loop cancelled mid-stream")
                 # Persist partial state from accumulator
                 session.add_assistant_response(
-                    state_accumulator['thinking'],
-                    state_accumulator['content'],
-                    state_accumulator['tool_call_inputs'],
-                    []
+                    state_accumulator["thinking"],
+                    state_accumulator["content"],
+                    state_accumulator["tool_call_inputs"],
+                    [],
                 )
                 raise
 
@@ -922,7 +1052,9 @@ class AcpAgent(Agent):
             # Check after tool execution
             if cancel_event and cancel_event.is_set():
                 logger.info("Cancelled after tool execution")
-                session.add_assistant_response(thinking, content, tool_call_inputs, tool_results)
+                session.add_assistant_response(
+                    thinking, content, tool_call_inputs, tool_results
+                )
                 return
 
             # Add response to session
