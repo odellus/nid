@@ -11,7 +11,6 @@ No wrapper, no nested agents - just one clean Agent(acp.Agent) implementation.
 
 import asyncio
 import json
-import logging
 import os
 import uuid
 from contextlib import AsyncExitStack, suppress
@@ -65,107 +64,29 @@ from acp.schema import (
 
 # Context vars for turn/tool call tracking
 _current_turn_id: ContextVar[str | None] = ContextVar("current_turn_id", default=None)
-import logging
-import os
-from logging.handlers import RotatingFileHandler
-from pathlib import Path
 
 from fastmcp import Client as MCPClient
 from json_schema_to_pydantic import create_model
 
+from crow_acp.client_tools import get_tool_kind
 from crow_acp.config import Config, get_default_config
-from crow_acp.context import context_fetcher, get_directory_tree
+from crow_acp.constants import (
+    EDIT_TOOL,
+    FETCH_TOOL,
+    READ_TOOL,
+    SEARCH_TOOL,
+    TERMINAL_TOOL,
+    WRITE_TOOL,
+)
+from crow_acp.context import (
+    context_fetcher,
+    get_directory_tree,
+    maximal_deserialize,
+)
 from crow_acp.llm import configure_llm
+from crow_acp.logger import logger
 from crow_acp.mcp_client import create_mcp_client_from_acp, get_tools
 from crow_acp.session import Session, lookup_or_create_prompt
-
-# 1. Define paths safely
-HOME = Path(os.getenv("HOME", "~")).expanduser()
-LOG_DIR = HOME / ".crow"
-LOG_PATH = LOG_DIR / "crow-acp.log"
-
-# 2. Ensure the directory exists (prevents FileNotFoundError)
-LOG_DIR.mkdir(parents=True, exist_ok=True)
-
-
-TERMINAL_TOOL = "crow-mcp_terminal"
-WRITE_TOOL = "crow-mcp_write"
-READ_TOOL = "crow-mcp_read"
-EDIT_TOOL = "crow-mcp_edit"
-SEARCH_TOOL = "crow-mcp_web_search"
-FETCH_TOOL = "crow-mcp_web_fetch"
-
-
-def setup_logger(name="crow_logger", log_file=LOG_PATH, max_mb=5, max_files=3):
-    """
-    Sets up a rotating file logger.
-
-    :param name: Name of the logger.
-    :param log_file: Path object or string to the log file.
-    :param max_mb: Maximum size in Megabytes before rotating.
-    :param max_files: Maximum number of backup files to keep.
-    """
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.INFO)  # Set your base logging level here
-
-    # 3. Prevent duplicate log entries if this function is called multiple times
-    if not logger.handlers:
-        # 4. Set up the RotatingFileHandler
-        # maxBytes triggers the rotation, backupCount limits the total files
-        file_handler = RotatingFileHandler(
-            log_file, maxBytes=max_mb * 1024 * 1024, backupCount=max_files
-        )
-
-        # 5. Define a readable log format
-        formatter = logging.Formatter(
-            "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-        file_handler.setFormatter(formatter)
-
-        # 6. Attach the handler
-        logger.addHandler(file_handler)
-
-    return logger
-
-
-# Initialize and test
-logger = setup_logger()
-logger.info("Rotating logger initialized successfully!")
-logger.error("This is an example error message.")
-
-
-def maximal_deserialize(data):
-    """
-    Recursively drills into dictionaries and lists,
-    deserializing any JSON strings it finds until
-    no more strings can be converted to objects.
-    """
-    # 1. If it's a string, try to decode it
-    if isinstance(data, str):
-        try:
-            # We strip it to avoid trying to load plain numbers/bools
-            # as JSON if they are just "1" or "true"
-            if data.startswith(("{", "[")):
-                decoded = json.loads(data)
-                # If it successfully decoded, recurse on the result
-                # (to handle nested-serialized strings)
-                return maximal_deserialize(decoded)
-        except json.JSONDecodeError, TypeError, ValueError:
-            # Not valid JSON, return the original string
-            pass
-        return data
-
-    # 2. If it's a dictionary, recurse on its values
-    elif isinstance(data, dict):
-        return {k: maximal_deserialize(v) for k, v in data.items()}
-
-    # 3. If it's a list, recurse on its elements
-    elif isinstance(data, list):
-        return [maximal_deserialize(item) for item in data]
-
-    # 4. Return anything else as-is (int, float, bool, None)
-    return data
 
 
 class AcpAgent(Agent):
@@ -827,7 +748,7 @@ class AcpAgent(Agent):
                             session_update="tool_call",
                             tool_call_id=acp_tool_call_id,
                             title=f"{tool_name}",
-                            kind=self._get_tool_kind(tool_name),
+                            kind=get_tool_kind(tool_name),
                             status="pending",
                         ),
                     )
@@ -884,24 +805,6 @@ class AcpAgent(Agent):
                     }
                 )
         return tool_results
-
-    def _get_tool_kind(self, tool_name: str) -> str:
-        """Map tool names to ACP ToolKind."""
-        # Common MCP tool patterns
-        if tool_name in ("read_file", "read", "view", "list_directory", "list"):
-            return "read"
-        elif tool_name in ("write_file", "write", "edit", "create", "str_replace"):
-            return "edit"
-        elif tool_name in ("delete", "remove"):
-            return "delete"
-        elif tool_name in ("move", "rename"):
-            return "move"
-        elif tool_name in ("search", "grep", "find"):
-            return "search"
-        elif tool_name in ("terminal", "bash", "shell", "execute"):
-            return "execute"
-        else:
-            return "other"
 
     async def _execute_acp_terminal(
         self,
@@ -1432,7 +1335,6 @@ class AcpAgent(Agent):
 
 
 async def agent_run() -> None:
-    logging.basicConfig(level=logging.INFO)
     await run_agent(AcpAgent())
 
 

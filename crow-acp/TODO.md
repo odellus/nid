@@ -5,13 +5,13 @@
 - ~~Fix prompt_id being hard coded, actually use hash of unrendered~~
 - Add /model selection in ACP
 - ~~Include @-ed files in the context through /files or whatever~~
-- Add tool calls and executions token emission
+- ~~Add tool calls and executions token emission~~
 - ~~Use AsyncOpenAI client to enable better `session/cancel` behavior~~
 - Load persisted agent from disk using local model. make sure the kv cache is exactly the same
 - ~~Use client side terminal~~
 - ~~Use client fs.read/fs.write instead of file_editor tool~~
 - ~~Replace file_editor entirely with opencode inspire fuzzy matching editor tool~~
-- ~~Add tool call decorations~~
+
 
 
 # BACKLOG

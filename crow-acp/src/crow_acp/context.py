@@ -6,6 +6,39 @@ from urllib.request import url2pathname
 from directory_tree import DisplayTree
 
 
+def maximal_deserialize(data):
+    """
+    Recursively drills into dictionaries and lists,
+    deserializing any JSON strings it finds until
+    no more strings can be converted to objects.
+    """
+    # 1. If it's a string, try to decode it
+    if isinstance(data, str):
+        try:
+            # We strip it to avoid trying to load plain numbers/bools
+            # as JSON if they are just "1" or "true"
+            if data.startswith(("{", "[")):
+                decoded = json.loads(data)
+                # If it successfully decoded, recurse on the result
+                # (to handle nested-serialized strings)
+                return maximal_deserialize(decoded)
+        except json.JSONDecodeError, TypeError, ValueError:
+            # Not valid JSON, return the original string
+            pass
+        return data
+
+    # 2. If it's a dictionary, recurse on its values
+    elif isinstance(data, dict):
+        return {k: maximal_deserialize(v) for k, v in data.items()}
+
+    # 3. If it's a list, recurse on its elements
+    elif isinstance(data, list):
+        return [maximal_deserialize(item) for item in data]
+
+    # 4. Return anything else as-is (int, float, bool, None)
+    return data
+
+
 def number_lines(content: str) -> list[str]:
     return [f"{k:6}\t{line}" for k, line in enumerate(content.split("\n"))]
 
