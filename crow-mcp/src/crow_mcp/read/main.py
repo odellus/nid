@@ -73,18 +73,69 @@ def _format_with_line_numbers(
 @mcp.tool
 async def read(
     file_path: str,
-    offset: int | None = None,
-    limit: int | None = None,
+    offset: int | None = 1,
+    limit: int | None = 2000,
 ) -> str:
     """Reads a file from the local filesystem with line numbers.
 
     Args:
         file_path: The absolute path to the file to read
         offset: Line number to start reading from (1-indexed, optional)
-        limit: Maximum number of lines to read (optional, default 100)
+        limit: Maximum number of lines to read (optional, default 2000)
 
     Returns:
         File contents with line numbers, or an error message
+
+    Notes:
+        - when limit is not specified, it defaults to 2000 lines
+        - when offset is not specified, it defaults to 1
+        - you should probably check file length with `wc -l /path/to/file` before reading, but if you just give the file path with no args you won't overflow
+        - BUT you really do want to use limit and offset pretty much always
+        - reading the file twice in a row with the same arguments will return the exact same result
+        - do not do with many tool calls what can be accomplished with fewer
+
+    Examples:
+        # EACH EXAMPLE IS SELF-CONTAINED.
+        # Read in lines 400-427 from file_path
+        {
+          "tool": "crow-mcp_read",
+          "file_path": "/path/to/file",
+          "offset": 400,
+          "limit": 26
+        }
+
+        # EXAMPLE
+        # Read in the first 2000 lines of the file path
+        {
+          "tool": "crow-mcp_read",
+          "file_path": "/path/to/file"
+        }
+
+        # EXAMPLE
+        # Read in the first 2000 lines of the file path
+        {
+          "tool": "crow-mcp_read",
+          "file_path": "/path/to/file"
+          "limit": 2000
+        }
+
+        # EXAMPLE
+        # Read in the first 2000 lines of the file path
+        {
+            "tool": "crow-mcp_read",
+            "file_path": "/path/to/file"
+            "limit": 2000,
+            "offset": 1
+        }
+
+        # EXAMPLE
+        # Read in lines 55-1056 lines of the file path
+        {
+          "tool": "crow-mcp_read",
+          "file_path": "/path/to/file",
+          "offset": 55,
+          "limit": 1001
+        }
     """
     path = Path(file_path)
 
