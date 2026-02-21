@@ -7,9 +7,9 @@ Encapsulates:
 - Session creation/loading
 """
 
-import hashlib
 import json
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session as SQLAlchemySession
@@ -50,10 +50,9 @@ def lookup_or_create_prompt(
             db.close()
             return existing.id
 
-        # Create new prompt with generated ID
-        import json
+        # Create new prompt with random ID
 
-        prompt_id = f"prompt-{hashlib.sha256(template.encode()).hexdigest()[:12]}"
+        prompt_id = f"prompt-{uuid4().hex}"
 
         new_prompt = Prompt(
             id=prompt_id,
@@ -79,16 +78,18 @@ class Session:
     - Reconstruct conversation from database
     """
 
-    def __init__(self, session_id: str, db_path: str = "sqlite:///mcp_testing.db"):
+    def __init__(self, session_id: str, db_path: str = "sqlite:///mcp_testing.db", cwd: str = "/tmp"):
         """
         Initialize session with ID and database path.
 
         Args:
             session_id: Unique session identifier
             db_path: Database connection string
+            cwd: Current working directory for this session
         """
         self.session_id = session_id
         self.db_path = db_path
+        self.cwd = cwd
         self.messages = []
         self.conv_index = 0
         self._db = None
@@ -280,6 +281,7 @@ class Session:
         request_params: dict[str, Any],
         model_identifier: str,
         db_path: str = "sqlite:///mcp_testing.db",
+        cwd: str = "/tmp",
     ) -> "Session":
         """
         Factory method to create a new session.
@@ -293,6 +295,7 @@ class Session:
             request_params: LLM request parameters
             model_identifier: Model identifier string
             db_path: Database connection string
+            cwd: Current working directory for this session
 
         Returns:
             New Session instance
@@ -325,8 +328,8 @@ class Session:
         db.commit()
         db.close()
 
-        # Create Session instance with system message
-        session = cls(session_id, db_path)
+        # Create Session instance with system message and cwd
+        session = cls(session_id, db_path, cwd=cwd)
         session.messages = [{"role": "system", "content": system_prompt}]
 
         return session

@@ -6,49 +6,19 @@
 - Add /model selection in ACP
 - ~~Include @-ed files in the context through /files or whatever~~
 - Add tool calls and executions token emission
+- ~~Use AsyncOpenAI client to enable better `session/cancel` behavior~~
+- Load persisted agent from disk using local model. make sure the kv cache is exactly the same
+
+# BACKLOG
 - Add callbacks points to agent
 - create contracts for requests and responses from callbacks extension SDK so other packages that import crow-acp can interact with the code without inheritance, self injection, or circular imports by
   1.  exposing get/set methods on session data
   2. expose `session/new` and `session/initialize` methods so extension can create new session with new data
   3. expose `session/prompt` with method so extensions/callbacks can use agent's warm kv cache for fast summarization during compaction
-- Use AsyncOpenAI client to enable better `session/cancel` behavior
-- Load persisted agent from disk using local model. make sure the kv cache is exactly the same
+- The key insight is that synchronous blocking code (like `time.sleep()` in the terminal polling loop) inside an `async def` function will block the entire event loop - which could cause hangs if the MCP transport needs to do I/O simultaneously. The fix would be `asyncio.to_thread()` or making the polling truly async.
+
+
+
 
 # IDEA 
 Just sit down with [agentclientprotocol.com](https://agentclientprotocol.com) and go through the whole thing once just to read, then again with a piece of paper taking notes, then again slower actually implementing in crow-acp.
-
-Pretty much everything I want to do is in here. 
-
-So I added the resource_link blocks to the context and added a `context_fetcher` function to fetch the content of a file and return it as a string.
-
-but yeah I can now chat with an agent in a persistent file and then just copy and paste the conversation into the chat. This is ideal. I mean honestly I think this is going to change how I use the agent.
-
-
-Think I should have the agent make a PLAN.md and iterate, or do I want to do this by hand and have the agent assist me the way it did when I was creating
-
-Nah I think I just need to do this by hand. Ask the agent as a super sophisticated search engine and debugger to hep me work.
-
-
-but yeah I think the thing I need to do is to create a bunch of examples of what I want to do in the sandbox and have the echo agent just get progressively more sophisticated. Slash commands, skills, the works, all disconnected from the agent for development velocity.
-
-
-
-
-okay we've got [async-react](./sandbox/async-react/README.md) set up and a plan for how to do cancellations on a more simplified level. Seems we need to append an AsyncEvent to each session to allow for the session/cancel update to kill everything and the idea is that since we're using AsyncOpenAI now it will trace all the way back to the provider and end session in a way that we can pick up right where we left off.
-
-which is one of the reasons I was thinking about making persistence a callback, because it basically already is a callback and I want to formalize the get/set operations over our session state, which apparently now needs a AsyncEvent attached?
-
-we looked at how kimi-cli does it in refs/kimi-li/src/kimi_cli/acp but they're going to have a very different approach that us because we're using native ACP but still a long to learn from
-
-
-
-[@23-cancellation-solid-plan.md](file:///home/thomas/src/projects/mcp-testing/docs/essays/23-cancellation-solid-plan.md) 
-
-[@echo_agent.py](file:///home/thomas/src/projects/mcp-testing/sandbox/crow-acp-learning/echo_agent.py) 
-
-[@streaming_async_react.py](file:///home/thomas/src/projects/mcp-testing/sandbox/async-react/streaming_async_react.py) 
-
-[@TODO.md (37:43)](file:///home/thomas/src/projects/mcp-testing/crow-acp/TODO.md#L37:43)
-
-
-Yeah cancellation is the real highest priority even moreso than tool calling. Like what good does seeing what the agent is up to do if you can't stop it?

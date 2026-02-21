@@ -12,7 +12,9 @@ No wrapper, no nested agents - just one clean Agent(acp.Agent) implementation.
 import asyncio
 import json
 import logging
-from contextlib import AsyncExitStack
+import uuid
+from contextlib import AsyncExitStack, suppress
+from contextvars import ContextVar
 from threading import ExceptHookArgs
 from typing import Any
 
@@ -43,10 +45,14 @@ from acp.schema import (
     McpServerStdio,
     ResourceContentBlock,
     SseMcpServer,
+    TerminalToolCallContent,
     TextContentBlock,
     ToolCallProgress,
     ToolCallStart,
 )
+
+# Context vars for turn/tool call tracking
+_current_turn_id: ContextVar[str | None] = ContextVar("current_turn_id", default=None)
 from fastmcp import Client as MCPClient
 from json_schema_to_pydantic import create_model
 
@@ -54,7 +60,7 @@ from crow_acp.config import Config, get_default_config
 from crow_acp.context import context_fetcher
 from crow_acp.llm import configure_llm
 from crow_acp.mcp_client import create_mcp_client_from_acp, get_tools
-from crow_acp.session import Session
+from crow_acp.session import Session, lookup_or_create_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -102,11 +108,13 @@ class AcpAgent(Agent):
     - Manages resources via AsyncExitStack
     - Stores minimal in-memory state (MCP clients, sessions)
     - Receives MCP servers from ACP client at runtime
+    - Replaces terminal tool with ACP client terminal when supported
 
     No wrapper, no nesting - just one clean implementation.
     """
 
     _conn: Client
+    _client_capabilities: ClientCapabilities | None = None
 
     def __init__(self, config: Config | None = None) -> None:
         """
@@ -131,6 +139,7 @@ class AcpAgent(Agent):
         self._cancel_events: dict[str, asyncio.Event] = {}  # session_id -> cancel_event
         self._streaming_tasks: dict[str, asyncio.Task] = {}  # session_id -> streaming_task
         self._state_accumulators: dict[str, dict] = {}  # session_id -> partial state for cancellation
+        self._tool_call_ids: dict[str, str] = {}  # session_id -> current turn_id for tool calls
         self._llm = configure_llm(debug=False)
 
     def on_connect(self, conn: Client) -> None:
@@ -146,6 +155,17 @@ class AcpAgent(Agent):
     ) -> InitializeResponse:
         """Handle ACP initialization"""
         logger.info("Initializing Agent")
+        logger.info(f"Client capabilities: {client_capabilities}")
+        logger.info(f"Client info: {client_info}")
+        
+        self._client_capabilities = client_capabilities
+        
+        # Check if client supports terminals
+        if client_capabilities and getattr(client_capabilities, "terminal", False):
+            logger.info("Client supports ACP terminals - will use client-side terminal")
+        else:
+            logger.info("Client does NOT support ACP terminals - will use MCP terminal")
+        
         return InitializeResponse(
             protocol_version=PROTOCOL_VERSION,
             agent_capabilities=AgentCapabilities(
@@ -195,13 +215,25 @@ class AcpAgent(Agent):
         # Get tools from MCP server
         tools = await get_tools(mcp_client)
 
+        # Load prompt template and get or create prompt_id
+        from datetime import datetime
+        from pathlib import Path
+        
+        template_path = Path(__file__).parent / "prompts" / "system_prompt.jinja2"
+        template = template_path.read_text()
+        prompt_id = lookup_or_create_prompt(template, name="crow-default", db_path=self._db_path)
+
         session = Session.create(
-            prompt_id="crow-v1",
-            prompt_args={"workspace": cwd},
+            prompt_id=prompt_id,
+            prompt_args={
+                "workspace": cwd,
+                "datetime": datetime.now().isoformat(),
+            },
             tool_definitions=tools,
             request_params={"temperature": 0.2},
             model_identifier=self._config.llm.default_model,
             db_path=self._db_path,
+            cwd=cwd,
         )
 
         # Store in-memory references
@@ -289,10 +321,15 @@ class AcpAgent(Agent):
         """
         logger.info("Prompt request for session: %s", session_id)
 
+        # Generate turn ID for this prompt (used for ACP tool call IDs)
+        turn_id = str(uuid.uuid4())
+        turn_token = _current_turn_id.set(turn_id)
+
         # Get session
         session = self._sessions.get(session_id)
         if not session:
             logger.error("Session not found: %s", session_id)
+            _current_turn_id.reset(turn_token)
             return PromptResponse(stop_reason="cancelled")
 
         # Extract text from prompt blocks
@@ -418,6 +455,8 @@ class AcpAgent(Agent):
         finally:
             # Clean up task reference
             self._streaming_tasks.pop(session_id, None)
+            # Reset turn ID context var
+            _current_turn_id.reset(turn_token)
 
     async def cancel(self, session_id: str, **kwargs: Any) -> None:
         """Handle cancellation by cancelling the streaming task."""
@@ -616,7 +655,7 @@ class AcpAgent(Agent):
         self, session_id: str, tool_call_inputs: list[dict]
     ) -> list[dict]:
         """
-        Execute tool calls via MCP.
+        Execute tool calls via MCP or ACP client terminal.
 
         Args:
             session_id: Session ID to get MCP client
@@ -625,31 +664,43 @@ class AcpAgent(Agent):
         Returns:
             List of tool results
         """
-
         mcp_client = self._mcp_clients[session_id]
         tool_results = []
 
-        # tool_schema_map = {tool["name"]: tool for tool in tools}
+        # Check if we should use ACP client terminal
+        use_acp_terminal = (
+            self._client_capabilities 
+            and getattr(self._client_capabilities, "terminal", False)
+        )
 
         for tool_call in tool_call_inputs:
+            tool_name = tool_call["function"]["name"]
             tool_args = tool_call["function"]["arguments"]
-            # logger.info(f"""TOOL-NAME: {tool_name}""")
-            # logger.info(f"""TOOL-ARGS: {tool_args}""")
+            
             try:
                 arg_dict = maximal_deserialize(tool_args)
 
-                result = await mcp_client.call_tool(
-                    tool_call["function"]["name"],
-                    arg_dict,
-                )
+                # Intercept terminal tool if ACP client supports it
+                if tool_name == "terminal" and use_acp_terminal:
+                    result_content = await self._execute_acp_terminal(
+                        session_id=session_id,
+                        tool_call_id=tool_call["id"],
+                        args=arg_dict,
+                    )
+                else:
+                    # Use MCP for all other tools
+                    result = await mcp_client.call_tool(tool_name, arg_dict)
+                    result_content = result.content[0].text
+
                 tool_results.append(
                     {
                         "role": "tool",
                         "tool_call_id": tool_call["id"],
-                        "content": result.content[0].text,
+                        "content": result_content,
                     }
                 )
             except Exception as e:
+                logger.error(f"Error executing tool {tool_name}: {e}", exc_info=True)
                 tool_results.append(
                     {
                         "role": "tool",
@@ -658,6 +709,151 @@ class AcpAgent(Agent):
                     }
                 )
         return tool_results
+
+    async def _execute_acp_terminal(
+        self,
+        session_id: str,
+        tool_call_id: str,
+        args: dict[str, Any],
+    ) -> str:
+        """
+        Execute terminal command via ACP client terminal.
+        
+        Maps the MCP terminal tool args to ACP client terminal:
+        - command: The command to run
+        - timeout: Max seconds to wait (default 30)
+        - is_input: Not supported by ACP terminal (runs single commands)
+        - reset: Not needed (ACP terminal is fresh each call)
+        
+        Args:
+            session_id: ACP session ID
+            tool_call_id: LLM tool call ID
+            args: Tool arguments from LLM
+            
+        Returns:
+            Result string with output and status
+        """
+        command = args.get("command", "")
+        timeout_seconds = float(args.get("timeout") or 30.0)
+        
+        # Build ACP tool call ID from turn_id + llm tool call id
+        turn_id = _current_turn_id.get()
+        acp_tool_call_id = f"{turn_id}/{tool_call_id}" if turn_id else tool_call_id
+        
+        # Get session state for cwd
+        session = self._sessions.get(session_id)
+        cwd = session.cwd if session and hasattr(session, 'cwd') else "/tmp"
+        
+        terminal_id: str | None = None
+        timed_out = False
+        
+        try:
+            # 1. Send tool call start
+            await self._conn.session_update(
+                session_id=session_id,
+                update=ToolCallStart(
+                    session_update="tool_call",
+                    tool_call_id=acp_tool_call_id,
+                    title=f"terminal: {command[:50]}{'...' if len(command) > 50 else ''}",
+                    kind="execute",
+                    status="pending",
+                ),
+            )
+            
+            # 2. Create terminal via ACP client
+            logger.info(f"Creating ACP terminal for command: {command}")
+            terminal_response = await self._conn.create_terminal(
+                command=command,
+                session_id=session_id,
+                cwd=cwd,
+                output_byte_limit=100000,  # 100KB limit
+            )
+            terminal_id = terminal_response.terminal_id
+            logger.info(f"Terminal created: {terminal_id}")
+            
+            # 3. Send tool call update with terminal content for live display
+            await self._conn.session_update(
+                session_id=session_id,
+                update=ToolCallProgress(
+                    session_update="tool_call_update",
+                    tool_call_id=acp_tool_call_id,
+                    status="in_progress",
+                    content=[
+                        TerminalToolCallContent(
+                            type="terminal",
+                            terminalId=terminal_id,
+                        )
+                    ],
+                ),
+            )
+            
+            # 4. Wait for terminal to exit with timeout
+            exit_code = None
+            exit_signal = None
+            try:
+                async with asyncio.timeout(timeout_seconds):
+                    exit_response = await self._conn.wait_for_terminal_exit(
+                        session_id=session_id,
+                        terminal_id=terminal_id,
+                    )
+                    exit_code = exit_response.exit_code
+                    exit_signal = exit_response.signal
+                    logger.info(f"Terminal exited with code: {exit_code}, signal: {exit_signal}")
+            except TimeoutError:
+                logger.warning(f"Terminal timed out after {timeout_seconds}s")
+                timed_out = True
+                await self._conn.kill_terminal(
+                    session_id=session_id, terminal_id=terminal_id
+                )
+            
+            # 5. Get final output
+            output_response = await self._conn.terminal_output(
+                session_id=session_id, terminal_id=terminal_id
+            )
+            output = output_response.output
+            
+            truncated_note = (
+                " Output was truncated." if output_response.truncated else ""
+            )
+            
+            # 6. Send final tool call update
+            final_status = (
+                "failed"
+                if (exit_code and exit_code != 0) or exit_signal or timed_out
+                else "completed"
+            )
+            
+            await self._conn.session_update(
+                session_id=session_id,
+                update=ToolCallProgress(
+                    session_update="tool_call_update",
+                    tool_call_id=acp_tool_call_id,
+                    status=final_status,
+                ),
+            )
+            
+            # 7. Build result message
+            if timed_out:
+                return f"⏱️ Command killed by timeout ({timeout_seconds}s){truncated_note}\n\nOutput:\n{output}"
+            elif exit_signal:
+                return f"⚠️ Command terminated by signal: {exit_signal}{truncated_note}\n\nOutput:\n{output}"
+            elif exit_code not in (None, 0):
+                return f"❌ Command failed with exit code: {exit_code}{truncated_note}\n\nOutput:\n{output}"
+            else:
+                return f"✅ Command executed successfully{truncated_note}\n\nOutput:\n{output}"
+                
+        except Exception as e:
+            logger.error(f"Error executing ACP terminal: {e}", exc_info=True)
+            return f"Error: {str(e)}"
+            
+        finally:
+            # 8. Release terminal if created
+            if terminal_id:
+                with suppress(Exception):
+                    await self._conn.release_terminal(
+                        session_id=session_id, terminal_id=terminal_id
+                    )
+                    logger.info(f"Released terminal: {terminal_id}")
 
     async def _react_loop(self, session_id: str, max_turns: int = 50000):
         """
