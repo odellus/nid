@@ -972,7 +972,7 @@ class AcpAgent(Agent):
         """
         path = args.get("file_path", "")
         offset = args.get("offset")  # 1-indexed
-        limit = args.get("limit", 2000)
+        limit = args.get("limit")
 
         # Build ACP tool call ID from turn_id + llm tool call id
         turn_id = _current_turn_id.get()

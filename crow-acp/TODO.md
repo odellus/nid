@@ -1,18 +1,13 @@
 # TO DO
 
 
-- ~~Fix system prompt to actually include AGENTS.md, render workspace info, add datetime~~
-- ~~Fix prompt_id being hard coded, actually use hash of unrendered~~
+- Fix system prompt to actually include AGENTS.md, render workspace info, add datetime
+- Fix prompt_id being hard coded, actually use hash of unrendered
 - Add /model selection in ACP
 - ~~Include @-ed files in the context through /files or whatever~~
 - ~~Add tool calls and executions token emission~~
 - ~~Use AsyncOpenAI client to enable better `session/cancel` behavior~~
 - Load persisted agent from disk using local model. make sure the kv cache is exactly the same
-- ~~Use client side terminal~~
-- ~~Use client fs.read/fs.write instead of file_editor tool~~
-- ~~Replace file_editor entirely with opencode inspire fuzzy matching editor tool~~
-
-
 
 # BACKLOG
 - Add callbacks points to agent
@@ -20,6 +15,8 @@
   1.  exposing get/set methods on session data
   2. expose `session/new` and `session/initialize` methods so extension can create new session with new data
   3. expose `session/prompt` with method so extensions/callbacks can use agent's warm kv cache for fast summarization during compaction
+- Fix intermittent error in terminal tool since upgrade The key insight is that synchronous blocking code (like `time.sleep()` in the terminal polling loop) inside an `async def` function will block the entire event loop - which could cause hangs if the MCP transport needs to do I/O simultaneously. The fix would be `asyncio.to_thread()` or making the polling truly async. 
+
 
 
 
