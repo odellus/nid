@@ -34,6 +34,13 @@ from acp import (
     update_agent_message,
     update_agent_thought,
 )
+from acp.helpers import (
+    ToolCallContentVariant,
+    start_edit_tool_call,
+    start_read_tool_call,
+    tool_diff_content,
+    update_tool_call,
+)
 from acp.interfaces import Client
 from acp.schema import (
     AgentCapabilities,
@@ -76,6 +83,12 @@ LOG_PATH = LOG_DIR / "crow-acp.log"
 
 # 2. Ensure the directory exists (prevents FileNotFoundError)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+
+TERMINAL_TOOL = "crow-mcp_terminal"
+WRITE_TOOL = "crow-mcp_write"
+READ_TOOL = "crow-mcp_read"
+EDIT_TOOL = "crow-mcp_edit"
 
 
 def setup_logger(name="crow_logger", log_file=LOG_PATH, max_mb=5, max_files=3):
@@ -218,7 +231,7 @@ class AcpAgent(Agent):
         logger.info(f"Client info: {client_info}")
 
         self._client_capabilities = client_capabilities
-
+        logger.info(f"Client capabilities: {client_capabilities}")
         # Check if client supports terminals
         if client_capabilities and getattr(client_capabilities, "terminal", False):
             logger.info("Client supports ACP terminals - will use client-side terminal")
@@ -732,6 +745,15 @@ class AcpAgent(Agent):
             self._client_capabilities, "terminal", False
         )
 
+        # Check filesystem capabilities (nested under 'fs')
+        fs_caps = (
+            getattr(self._client_capabilities, "fs", None)
+            if self._client_capabilities
+            else None
+        )
+        use_acp_write = fs_caps and getattr(fs_caps, "write_text_file", False)
+        use_acp_read = fs_caps and getattr(fs_caps, "read_text_file", False)
+
         # Get turn_id for ACP tool call IDs
         turn_id = _current_turn_id.get()
 
@@ -749,8 +771,27 @@ class AcpAgent(Agent):
                 arg_dict = maximal_deserialize(tool_args)
 
                 # Intercept terminal tool if ACP client supports it
-                if tool_name == "crow-mcp_1terminal" and use_acp_terminal:
+                if tool_name == TERMINAL_TOOL and use_acp_terminal:
                     result_content = await self._execute_acp_terminal(
+                        session_id=session_id,
+                        tool_call_id=llm_tool_call_id,
+                        args=arg_dict,
+                    )
+                elif tool_name == WRITE_TOOL and use_acp_write:
+                    result_content = await self._execute_acp_write(
+                        session_id=session_id,
+                        tool_call_id=llm_tool_call_id,
+                        args=arg_dict,
+                    )
+                elif tool_name == READ_TOOL and use_acp_read:
+                    result_content = await self._execute_acp_read(
+                        session_id=session_id,
+                        tool_call_id=llm_tool_call_id,
+                        args=arg_dict,
+                    )
+                elif tool_name == EDIT_TOOL:
+                    # Edit always uses local MCP (fuzzy matching), but sends diff content
+                    result_content = await self._execute_acp_edit(
                         session_id=session_id,
                         tool_call_id=llm_tool_call_id,
                         args=arg_dict,
@@ -985,6 +1026,224 @@ class AcpAgent(Agent):
                         session_id=session_id, terminal_id=terminal_id
                     )
                     logger.info(f"Released terminal: {terminal_id}")
+
+    async def _execute_acp_read(
+        self,
+        session_id: str,
+        tool_call_id: str,
+        args: dict[str, Any],
+    ) -> str:
+        """
+        Read file via ACP client filesystem.
+
+        Args:
+            session_id: ACP session ID
+            tool_call_id: LLM tool call ID
+            args: Tool arguments from LLM (file_path, offset, limit)
+
+        Returns:
+            File contents with line numbers
+        """
+        path = args.get("file_path", "")
+        offset = args.get("offset")  # 1-indexed
+        limit = args.get("limit")
+
+        # Build ACP tool call ID from turn_id + llm tool call id
+        turn_id = _current_turn_id.get()
+        acp_tool_call_id = f"{turn_id}/{tool_call_id}" if turn_id else tool_call_id
+
+        try:
+            # 1. Send tool call start
+            title = f"read: {path}"
+            await self._conn.session_update(
+                session_id=session_id,
+                update=start_read_tool_call(
+                    tool_call_id=acp_tool_call_id,
+                    title=title,
+                    path=path,
+                ),
+            )
+
+            # 2. Send in_progress update
+            await self._conn.session_update(
+                session_id=session_id,
+                update=update_tool_call(acp_tool_call_id, status="in_progress"),
+            )
+
+            # 3. Read file via ACP client
+            logger.info(f"Reading file via ACP: {path}")
+            response = await self._conn.read_text_file(
+                session_id=session_id,
+                path=path,
+                line=offset,
+                limit=limit,
+            )
+            content = response.content or ""
+
+            # 4. Send completion update
+            await self._conn.session_update(
+                session_id=session_id,
+                update=update_tool_call(acp_tool_call_id, status="completed"),
+            )
+
+            return content
+
+        except Exception as e:
+            logger.error(f"Error reading file via ACP: {e}", exc_info=True)
+            # Send failed status
+            await self._conn.session_update(
+                session_id=session_id,
+                update=update_tool_call(acp_tool_call_id, status="failed"),
+            )
+            return f"Error reading file: {str(e)}"
+
+    async def _execute_acp_write(
+        self,
+        session_id: str,
+        tool_call_id: str,
+        args: dict[str, Any],
+    ) -> str:
+        """
+        Write file via ACP client filesystem.
+
+        Args:
+            session_id: ACP session ID
+            tool_call_id: LLM tool call ID
+            args: Tool arguments from LLM (file_path, content)
+
+        Returns:
+            Success message
+        """
+        path = args.get("file_path", "")
+        content = args.get("content", "")
+
+        # Build ACP tool call ID from turn_id + llm tool call id
+        turn_id = _current_turn_id.get()
+        acp_tool_call_id = f"{turn_id}/{tool_call_id}" if turn_id else tool_call_id
+
+        try:
+            # 1. Send tool call start
+            title = f"write: {path}"
+            await self._conn.session_update(
+                session_id=session_id,
+                update=start_edit_tool_call(
+                    tool_call_id=acp_tool_call_id,
+                    title=title,
+                    path=path,
+                    content=content,
+                ),
+            )
+
+            # 2. Send in_progress update with diff content
+            await self._conn.session_update(
+                session_id=session_id,
+                update=update_tool_call(
+                    acp_tool_call_id,
+                    status="in_progress",
+                    content=[tool_diff_content(path=path, new_text=content)],
+                ),
+            )
+
+            # 3. Write file via ACP client
+            logger.info(f"Writing file via ACP: {path}")
+            await self._conn.write_text_file(
+                session_id=session_id,
+                path=path,
+                content=content,
+            )
+
+            # 4. Send completion update
+            await self._conn.session_update(
+                session_id=session_id,
+                update=update_tool_call(acp_tool_call_id, status="completed"),
+            )
+
+            return f"Successfully wrote to {path}"
+
+        except Exception as e:
+            logger.error(f"Error writing file via ACP: {e}", exc_info=True)
+            # Send failed status
+            await self._conn.session_update(
+                session_id=session_id,
+                update=update_tool_call(acp_tool_call_id, status="failed"),
+            )
+            return f"Error writing file: {str(e)}"
+
+    async def _execute_acp_edit(
+        self,
+        session_id: str,
+        tool_call_id: str,
+        args: dict[str, Any],
+    ) -> str:
+        """
+        Edit file with fuzzy matching, sending diff content to ACP client.
+
+        This executes the edit locally (fuzzy matching is agent-side) but
+        sends proper diff content for the client to display.
+
+        Args:
+            session_id: ACP session ID
+            tool_call_id: LLM tool call ID
+            args: Tool arguments from LLM (file_path, old_string, new_string, replace_all)
+
+        Returns:
+            Result string from the edit operation
+        """
+        path = args.get("file_path", "")
+        old_text = args.get("old_string", "")
+        new_text = args.get("new_string", "")
+
+        # Build ACP tool call ID from turn_id + llm tool call id
+        turn_id = _current_turn_id.get()
+        acp_tool_call_id = f"{turn_id}/{tool_call_id}" if turn_id else tool_call_id
+
+        try:
+            # 1. Send tool call start
+            title = f"edit: {path}"
+            await self._conn.session_update(
+                session_id=session_id,
+                update=start_edit_tool_call(
+                    tool_call_id=acp_tool_call_id,
+                    title=title,
+                    path=path,
+                    content=new_text,
+                ),
+            )
+
+            # 2. Send in_progress update with diff content
+            await self._conn.session_update(
+                session_id=session_id,
+                update=update_tool_call(
+                    acp_tool_call_id,
+                    status="in_progress",
+                    content=[tool_diff_content(path=path, new_text=new_text, old_text=old_text)],
+                ),
+            )
+
+            # 3. Execute edit via local MCP tool (fuzzy matching is agent-side)
+            logger.info(f"Executing edit via MCP: {path}")
+            mcp_client = self._mcp_clients.get(session_id)
+            if not mcp_client:
+                raise RuntimeError(f"No MCP client for session {session_id}")
+            result = await mcp_client.call_tool(EDIT_TOOL, args)
+            result_content = result.content[0].text
+
+            # 4. Send completion update
+            status = "completed" if "Error" not in result_content else "failed"
+            await self._conn.session_update(
+                session_id=session_id,
+                update=update_tool_call(acp_tool_call_id, status=status),
+            )
+
+            return result_content
+
+        except Exception as e:
+            logger.error(f"Error executing edit: {e}", exc_info=True)
+            await self._conn.session_update(
+                session_id=session_id,
+                update=update_tool_call(acp_tool_call_id, status="failed"),
+            )
+            return f"Error: {str(e)}"
 
     async def _react_loop(self, session_id: str, max_turns: int = 50000):
         """

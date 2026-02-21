@@ -172,28 +172,24 @@ packages = ["package_name"]  # NOT ["."] or ["*"]
 - ✅ Extensions can use any package without import issues
 - ✅ Follows the pattern from refs/software-agent-sdk
 
-### 2. ALWAYS Use `uv`
+### 2. ALWAYS Use `uv --project` (Terminal Sessions Are NOT Persistent)
 ```bash
 # ✅ CORRECT
-which python
-# Oh shit! we're using the wrong version
-source .venv/bin/activate
-# Let's check again
-which python
-# okay good to go!
-uv run pytest tests/
-uv run python src/crow/acp_agent.py
+uv --project /home/thomas/src/projects/mcp-testing run python src/crow/acp_agent.py
+uv --project /home/thomas/src/projects/mcp-testing run pytest tests/
+uv --project /home/thomas/src/projects/mcp-testing run python -m pytest tests/
 
-# ❌ WRONG - Will use wrong Python/environment
-python -m pytest tests/
-pytest tests/
+# ❌ WRONG - Terminal sessions are NOT persistent
+source .venv/bin/activate  # This does NOT persist across tool calls!
+which python               # Will show system Python, not venv
+uv run pytest tests/       # May use wrong environment
 ```
 
-**Why**: Each terminal session is persistent actually, so you can just source .venv/bin/activate and you will be using the correct environment, but check first:
-- Correct Python version (3.12+)
-- Correct virtual environment
-- Correct dependencies loaded
-- Consistent behavior across sessions
+**Why**: Each terminal session is stateless and starts fresh. You CANNOT rely on `source .venv/bin/activate` persisting between tool calls. Always use `uv --project` with the absolute path to ensure the correct environment is used every time:
+- ✅ Explicit environment specification (no ambiguity)
+- ✅ Works consistently across sessions
+- ✅ No dependency on previous state
+- ✅ Reproducible behavior
 
 ### 4. **ALWAYS TEST YOUR FUCKING CODE BEFORE CLAIMING IT WORKS**
 ```
