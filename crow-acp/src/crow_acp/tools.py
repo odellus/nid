@@ -48,7 +48,6 @@ from acp.schema import (
 from fastmcp import Client as MCPClient
 
 from crow_acp.config import Config
-from crow_acp.context import get_syntax_for_file, mapping
 from crow_acp.logger import logger
 from crow_acp.session import Session
 
@@ -355,8 +354,6 @@ async def execute_acp_read(
             limit=limit,
         )
         content = response.content or ""
-        content_type = get_syntax_for_file(path, mapping)
-        content = f"""```{content_type}\n{content}```"""
 
         # 4. Send completion update with file content
         await conn.session_update(

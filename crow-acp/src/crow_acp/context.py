@@ -6,40 +6,6 @@ from urllib.parse import urlparse
 from urllib.request import url2pathname
 
 from directory_tree import DisplayTree
-from pygments.lexers import get_all_lexers
-
-
-def get_exhaustive_markdown_mapping():
-    """
-    Programmatically generates a mapping of file extensions
-    to their preferred Markdown syntax highlighter tag.
-    """
-    extension_map = {}
-
-    # Iterate through every lexer supported by Pygments
-    for name, aliases, extensions, mimetypes in get_all_lexers():
-        if not aliases:
-            continue
-
-        # The first alias is usually the most 'standard' tag (e.g., 'python')
-        standard_tag = aliases[0]
-
-        for ext in extensions:
-            # extensions come in glob format like '*.py'
-            clean_ext = ext.lstrip("*").lower()
-            if clean_ext:
-                # We prioritize the first time an extension is mapped
-                # to keep the most common usage
-                if clean_ext not in extension_map:
-                    extension_map[clean_ext] = standard_tag
-
-    return extension_map
-
-
-# Implementation function
-def get_syntax_for_file(filename: str, mapping: dict[str, str]) -> str:
-    ext = os.path.splitext(filename)[1].lower()
-    return mapping.get(ext, "text")
 
 
 def maximal_deserialize(data):
@@ -134,6 +100,3 @@ def get_directory_tree(cwd: str) -> str:
     ignores = ["node_modules", "*.egg_info", "__pycache__", ".venv", "refs"]
     tree = DisplayTree(stringRep=True, dirPath=cwd, ignoreList=ignores, maxDepth=5.0)
     return tree
-
-
-mapping = get_exhaustive_markdown_mapping()
