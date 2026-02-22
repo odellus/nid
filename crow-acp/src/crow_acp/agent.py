@@ -58,6 +58,8 @@ from acp.schema import (
     TextContentBlock,
     ToolCallProgress,
     ToolCallStart,
+    SessionConfigOption,
+    SetSessionConfigOptionResponse,
 )
 from fastmcp import Client as MCPClient
 from json_schema_to_pydantic import create_model
@@ -127,6 +129,32 @@ class AcpAgent(Agent):
         ] = {}  # session_id -> persistent terminal_id for stateful terminals
         self._prompt_tasks: dict[str, asyncio.Task] = {}
         self._llm = configure_llm(debug=False)
+        self._config_values: dict[str, dict[str, str]] = {}  # session_id -> {config_id: value}
+
+    def _get_config_options(self, session_id: str) -> list[SessionConfigOption]:
+        """Generate the config options for a session based on current values."""
+        options_list = []
+        for model in self._config.llm.models:
+            options_list.append(dict(
+                value=f"{model.provider}:{model.model}",
+                name=f"{model.provider}/{model.model}",
+                description=f"Model {model.model} from {model.provider}"
+            ))
+
+        current_vals = self._config_values.get(session_id, {})
+        default_model = f"{self._config.llm.models[0].provider}:{self._config.llm.models[0].model}" if self._config.llm.models else ""
+        current_model = current_vals.get("model", default_model)
+
+        return [
+            SessionConfigOption(dict(
+                id="model",
+                name="Model",
+                category="model",
+                type="select",
+                currentValue=current_model,
+                options=options_list
+            ))
+        ]
 
     def on_connect(self, conn: Client) -> None:
         """Store connection for sending updates"""
@@ -238,8 +266,14 @@ class AcpAgent(Agent):
         self._tools[session.session_id] = tools
         self._cancel_events[session.session_id] = asyncio.Event()
 
+        # Set default values for new session config
+        default_model = f"{self._config.llm.models[0].provider}:{self._config.llm.models[0].model}" if self._config.llm.models else ""
+        self._config_values[session.session_id] = {"model": default_model}
+
         logger.info("Created session: %s with %d tools", session.session_id, len(tools))
-        return NewSessionResponse(session_id=session.session_id, modes=None)
+        
+        config_options = self._get_config_options(session.session_id)
+        return NewSessionResponse(session_id=session.session_id, config_options=config_options)
 
     async def load_session(
         self,
@@ -281,9 +315,15 @@ class AcpAgent(Agent):
             self._tools[session_id] = tools
             self._cancel_events[session_id] = asyncio.Event()
 
+            # Initialize session config if not present
+            if session_id not in self._config_values:
+                default_model = f"{self._config.llm.models[0].provider}:{self._config.llm.models[0].model}" if self._config.llm.models else ""
+                self._config_values[session_id] = {"model": session.model_identifier or default_model}
+
             # TODO: Replay conversation history to client
 
-            return LoadSessionResponse()
+            config_options = self._get_config_options(session_id)
+            return LoadSessionResponse(config_options=config_options)
         except Exception as e:
             logger.error("Failed to load session %s: %s", session_id, e)
             return None
@@ -294,6 +334,33 @@ class AcpAgent(Agent):
         """Handle session mode changes (not implemented yet)"""
         logger.info("Set session mode: %s -> %s", session_id, mode_id)
         return SetSessionModeResponse()
+
+    async def set_config_option(
+        self, config_id: str, session_id: str, value: str, **kwargs: Any
+    ) -> SetSessionConfigOptionResponse | None:
+        """Handle config option changes"""
+        logger.info("Set session %s config option %s -> %s", session_id, config_id, value)
+        
+        # Initialize if not set
+        if session_id not in self._config_values:
+            self._config_values[session_id] = {}
+            
+        self._config_values[session_id][config_id] = value
+        
+        # Update session model if the config changed was the model
+        if config_id == "model" and session_id in self._sessions:
+            session = self._sessions[session_id]
+            # Optionally split back from provider:model
+            if ":" in value:
+                provider, model = value.split(":", 1)
+                # Keep provider info if needed, or just set model identifier
+                # In Session we typically save model_identifier. If we want it to be provider:model then this is fine
+                session.model_identifier = value
+            else:
+                session.model_identifier = value
+                
+        config_options = self._get_config_options(session_id)
+        return SetSessionConfigOptionResponse(config_options=config_options)
 
     async def prompt(
         self,
@@ -368,6 +435,14 @@ class AcpAgent(Agent):
 
             # Stream chunks directly from react_loop - no queue, no latency
             try:
+                current_config = self._config_values.get(session_id, {})
+                default_model = f"{self._config.llm.models[0].provider}:{self._config.llm.models[0].model}" if self._config.llm.models else "glm-5"
+                current_model_value = current_config.get("model", default_model)
+                if ":" in current_model_value:
+                    _, model_name = current_model_value.split(":", 1)
+                else:
+                    model_name = current_model_value
+
                 async for chunk in react_loop(
                     conn=self._conn,
                     config=self._config,
@@ -375,7 +450,7 @@ class AcpAgent(Agent):
                     turn_id=turn_id,
                     mcp_clients=self._mcp_clients,
                     llm=self._llm,
-                    model="glm-5",
+                    model=model_name,
                     tools=tools,
                     sessions=self._sessions,
                     cancel_event=self._cancel_events[session_id],

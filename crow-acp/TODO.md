@@ -1,13 +1,11 @@
 # TO DO
 
-
-- Add /model selection in ACP
-- Load persisted agent from disk using local model. make sure the kv cache is exactly the same (pretty sure this is going to necessarily be true, our kv cache is preserved and we're persisting **everything**) but we'll see
-- go through and find the necessary mapping between the file extension and the types of markdown syntax highlighting which are actually supported and stick ```{extension_type}\n``` around the content blocks from fs.read and work out how to make them visible by default in client
+- test `load_session` using local model
 - skills, skills, skills
-- Make different providers part of the actual configuration <- use a toml file or something in ~/.crow
+- ~~Make different providers part of the actual configuration <- use a toml file or something in ~/.crow~~
 - doom loop detection
-- 
+- Add different models to NewSessionResponse(config_options<- put model choices here)
+- Implement a change on your agent's provider/model config through `set_config_option` method in agent
 
 
 # BACKLOG
@@ -32,3 +30,87 @@ Just sit down with [agentclientprotocol.com](https://agentclientprotocol.com) an
 - ~~Include @-ed files in the context through /files or whatever~~
 - ~~Add tool calls and executions token emission~~
 - ~~Use AsyncOpenAI client to enable better `session/cancel` behavior~~
+
+
+so it's pretty clear to me now
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "sessionId": "sess_abc123def456",
+    "configOptions": [
+      {
+        "id": "mode",
+        "name": "Session Mode",
+        "description": "Controls how the agent requests permission",
+        "category": "mode",
+        "type": "select",
+        "currentValue": "ask",
+        "options": [
+          {
+            "value": "ask",
+            "name": "Ask",
+            "description": "Request permission before making any changes"
+          },
+          {
+            "value": "code",
+            "name": "Code",
+            "description": "Write and modify code with full tool access"
+          }
+        ]
+      },
+      {
+        "id": "model",
+        "name": "Model",
+        "category": "model",
+        "type": "select",
+        "currentValue": "model-1",
+        "options": [
+          {
+            "value": "model-1",
+            "name": "Model 1",
+            "description": "The fastest model"
+          },
+          {
+            "value": "model-2",
+            "name": "Model 2",
+            "description": "The most powerful model"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+And then there's what you attach to session/set_config_option in new_session when you return NewSessionResponse(session_id=session_id, config_options={below})
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "session/set_config_option",
+  "params": {
+    "sessionId": "sess_abc123def456",
+    "configId": "mode",
+    "value": "code"
+  }
+}
+```
+so we need to set up our config_options are part of some kind of 
+```python
+self._config_options: dict[session_id, dict[config_id, value]]
+```
+
+so our code 
+
+```python
+    @param_model(SetSessionConfigOptionRequest)
+    async def set_config_option(
+        self, config_id: str, session_id: str, value: str, **kwargs: Any
+    ) -> SetSessionConfigOptionResponse | None: ...
+```
+
+basically just needs to set that option and in prompt we need to use the provider/model combination
