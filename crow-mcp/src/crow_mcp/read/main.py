@@ -73,18 +73,28 @@ def _format_with_line_numbers(
 @mcp.tool
 async def read(
     file_path: str,
-    offset: int | None = None,
-    limit: int | None = None,
+    offset: int,
+    limit: int,
 ) -> str:
     """Reads a file from the local filesystem with line numbers.
 
     Args:
         file_path: The absolute path to the file to read
-        offset: Line number to start reading from (1-indexed, optional)
-        limit: Maximum number of lines to read (optional, default 100)
+        offset: Line number to start reading from (1-indexed) - REQUIRED
+        limit: Maximum number of lines to read - REQUIRED
 
     Returns:
         File contents with line numbers, or an error message
+
+    CRITICAL REQUIREMENTS:
+    - offset and limit are REQUIRED parameters - you MUST provide both
+    - Do NOT use small defaults like limit=100 - this causes inefficient looping
+
+    STRATEGY for reading files:
+    - Start with offset=1, limit=1000 to read the first 1000 lines
+    - If the file continues, use offset=1001, limit=1000 for the next 1000 lines
+    - Continue with offset=N, limit=1000 until you've read the entire file
+    - For large files, use larger limits like 2000-5000 to reduce round trips
     """
     path = Path(file_path)
 

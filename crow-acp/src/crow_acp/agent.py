@@ -268,8 +268,12 @@ class AcpAgent(Agent):
         )
         display_tree = get_directory_tree(cwd)
         agent_path = os.path.join(cwd, "AGENTS.md")
-        with open(agent_path, "r") as f:
-            agents_content = f.read()
+        if os.path.exists(agent_path):
+            with open(agent_path, "r") as f:
+                agents_content = f.read()
+        else:
+            agents_content = "No AGENTS.md found"
+
         session = Session.create(
             prompt_id=prompt_id,
             prompt_args={
@@ -745,32 +749,32 @@ class AcpAgent(Agent):
                 arg_dict = maximal_deserialize(tool_args)
 
                 # Intercept terminal tool if ACP client supports it
-                if tool_name == TERMINAL_TOOL and use_acp_terminal:
+                if tool_name == self._config.TERMINAL_TOOL and use_acp_terminal:
                     result_content = await self._execute_acp_terminal(
                         session_id=session_id,
                         tool_call_id=llm_tool_call_id,
                         args=arg_dict,
                     )
-                elif tool_name == WRITE_TOOL and use_acp_write:
+                elif tool_name == self._config.WRITE_TOOL and use_acp_write:
                     result_content = await self._execute_acp_write(
                         session_id=session_id,
                         tool_call_id=llm_tool_call_id,
                         args=arg_dict,
                     )
-                elif tool_name == READ_TOOL and use_acp_read:
+                elif tool_name == self._config.READ_TOOL and use_acp_read:
                     result_content = await self._execute_acp_read(
                         session_id=session_id,
                         tool_call_id=llm_tool_call_id,
                         args=arg_dict,
                     )
-                elif tool_name == EDIT_TOOL:
+                elif tool_name == self._config.EDIT_TOOL:
                     # Edit always uses local MCP (fuzzy matching), but sends diff content
                     result_content = await self._execute_acp_edit(
                         session_id=session_id,
                         tool_call_id=llm_tool_call_id,
                         args=arg_dict,
                     )
-                elif tool_name == SEARCH_TOOL:
+                elif tool_name == self._config.SEARCH_TOOL:
                     result_content = await self._execute_acp_tool(
                         session_id=session_id,
                         tool_call_id=llm_tool_call_id,
@@ -778,7 +782,7 @@ class AcpAgent(Agent):
                         args=arg_dict,
                         kind="search",
                     )
-                elif tool_name == FETCH_TOOL:
+                elif tool_name == self._config.FETCH_TOOL:
                     result_content = await self._execute_acp_tool(
                         session_id=session_id,
                         tool_call_id=llm_tool_call_id,
@@ -1035,8 +1039,8 @@ class AcpAgent(Agent):
             File contents with line numbers
         """
         path = args.get("file_path", "")
-        offset = args.get("offset")  # 1-indexed
-        limit = args.get("limit", 2000)
+        offset = args.get("offset", 1)
+        limit = args.get("limit", 4000)
 
         # Build ACP tool call ID from turn_id + llm tool call id
         turn_id = _current_turn_id.get()
