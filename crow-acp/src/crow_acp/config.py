@@ -71,13 +71,16 @@ class Config:
     max_retries_per_step: int = 3
     mcp_servers: dict[str, Any] = field(default_factory=get_default_mcp_config)
 
-    # Constants (Class variables)
+    # Tool Constants
     TERMINAL_TOOL: str = field(default="crow-mcp_terminal", init=False)
     WRITE_TOOL: str = field(default="crow-mcp_write", init=False)
     READ_TOOL: str = field(default="crow-mcp_read", init=False)
     EDIT_TOOL: str = field(default="crow-mcp_edit", init=False)
     SEARCH_TOOL: str = field(default="crow-mcp_web_search", init=False)
     FETCH_TOOL: str = field(default="crow-mcp_web_fetch", init=False)
+
+    # Logging constant
+    LOG_PATH: str = field(default=f"{get_config_dir() / 'crow-acp.log'}")
 
     def get_builtin_mcp_config(self) -> dict[str, Any]:
         """Get the default MCP server configuration."""

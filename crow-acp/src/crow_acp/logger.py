@@ -1,3 +1,6 @@
+import logging
+from logging.handlers import RotatingFileHandler
+
 from crow_acp.config import settings
 
 
@@ -38,3 +41,5 @@ def setup_logger(name="crow_logger", log_file=settings.LOG_PATH, max_mb=5, max_f
 logger = setup_logger()
 logger.info("Rotating logger initialized successfully!")
 logger.error("This is an example error message.")
+
+logger = setup_logger()
