@@ -74,7 +74,7 @@ from fastmcp import Client as MCPClient
 from json_schema_to_pydantic import create_model
 
 from crow_acp.config import Config, get_default_config
-from crow_acp.context import context_fetcher, get_directory_tree
+from crow_acp.context import context_fetcher, get_directory_tree, maximal_deserialize
 from crow_acp.llm import configure_llm
 from crow_acp.mcp_client import create_mcp_client_from_acp, get_tools
 from crow_acp.session import Session, lookup_or_create_prompt
@@ -133,39 +133,6 @@ def setup_logger(name="crow_logger", log_file=LOG_PATH, max_mb=5, max_files=3):
 logger = setup_logger()
 logger.info("Rotating logger initialized successfully!")
 logger.error("This is an example error message.")
-
-
-def maximal_deserialize(data):
-    """
-    Recursively drills into dictionaries and lists,
-    deserializing any JSON strings it finds until
-    no more strings can be converted to objects.
-    """
-    # 1. If it's a string, try to decode it
-    if isinstance(data, str):
-        try:
-            # We strip it to avoid trying to load plain numbers/bools
-            # as JSON if they are just "1" or "true"
-            if data.startswith(("{", "[")):
-                decoded = json.loads(data)
-                # If it successfully decoded, recurse on the result
-                # (to handle nested-serialized strings)
-                return maximal_deserialize(decoded)
-        except json.JSONDecodeError, TypeError, ValueError:
-            # Not valid JSON, return the original string
-            pass
-        return data
-
-    # 2. If it's a dictionary, recurse on its values
-    elif isinstance(data, dict):
-        return {k: maximal_deserialize(v) for k, v in data.items()}
-
-    # 3. If it's a list, recurse on its elements
-    elif isinstance(data, list):
-        return [maximal_deserialize(item) for item in data]
-
-    # 4. Return anything else as-is (int, float, bool, None)
-    return data
 
 
 class AcpAgent(Agent):
@@ -312,7 +279,7 @@ class AcpAgent(Agent):
             },
             tool_definitions=tools,
             request_params={"temperature": 0.2},
-            model_identifier=self._config.llm.default_model,
+            model_identifier=self._config.llm.providers[0].default_model,
             db_path=self._db_path,
             cwd=cwd,
         )

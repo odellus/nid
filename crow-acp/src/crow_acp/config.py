@@ -1,20 +1,10 @@
-"""
-Configuration settings for Crow Agent.
-
-Simple configuration with sensible defaults:
-- LLM config (api key, base url, model)
-- MCP servers (default: builtin file_editor, web_search, fetch)
-- Persistence (database path: ~/.crow/crow.db)
-- Runtime (max steps, retries)
-"""
-
 import json
 import os
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field, SecretStr
 
 load_dotenv()
 
@@ -26,46 +16,71 @@ def get_config_dir() -> Path:
     return config_dir
 
 
-def get_default_mcp_config() -> dict[str, Any]:
-    """The default location of the crow-mcp-server is in the current working directory where"""
+def get_default_mcp_config(use_local: bool = True) -> dict[str, Any]:
+    """Load default MCP server config, falling back to empty dict if missing."""
     config_dir = get_config_dir()
-    with open(config_dir / "mcp.json", "r") as f:
-        return json.load(f)
+    mcp_file = config_dir / "mcp.json"
+
+    if not mcp_file.exists():
+        return {}
+
+    with open(mcp_file, "r") as f:
+        mcp_config = json.load(f)
+
+    # Added safety check using .get() to prevent KeyErrors
+    if use_local and "crow-mcp" in mcp_config.get("mcpServers", {}):
+        path = Path(os.path.abspath(__file__))
+        local_path = path.parent.parent.parent.parent / "crow-mcp"
+        mcp_config["mcpServers"]["crow-mcp"]["args"][1] = str(local_path)
+
+    return mcp_config
 
 
-class LLMConfig(BaseModel):
+@dataclass
+class LLMProvider:
     """LLM provider configuration."""
 
-    api_key: SecretStr | None = Field(
-        default=None, description="API key for LLM provider"
-    )
-    base_url: str | None = Field(default=None, description="Base URL for LLM API")
-    default_model: str = Field(default="glm-5", description="Default model to use")
+    # repr=False hides the key from logs, acting like Pydantic's SecretStr
+    api_key: str | None = field(default=None, repr=False)
+    base_url: str | None = None
+    default_model: str = "glm-5"
 
 
-class Config(BaseModel):
+@dataclass
+class LLMConfig:
+    """LLM provider configuration."""
+
+    providers: list[LLMProvider] = field(default_factory=list)
+
+
+@dataclass
+class Config:
     """Configuration for Crow Agent."""
 
-    llm: LLMConfig = Field(default_factory=LLMConfig, description="LLM configuration")
-    database_path: str = Field(
-        default="sqlite:///~/.crow/crow.db", description="Database connection string"
-    )
-    max_steps_per_turn: int = Field(
-        default=100, ge=1, description="Max agent steps per turn"
-    )
-    max_retries_per_step: int = Field(
-        default=3, ge=1, description="Max retries per step"
+    # Instance variables
+    config_dir: Path = field(default_factory=get_config_dir)
+    llm: LLMConfig = field(default_factory=LLMConfig)
+
+    database_path: str = field(
+        default_factory=lambda: os.getenv(
+            "DATABASE_PATH", f"sqlite:///{get_config_dir() / 'crow.db'}"
+        )
     )
 
-    # Default MCP servers for coding agent
-    mcp_servers: dict[str, Any] = Field(
-        default_factory=dict,
-        description="MCP servers config (default: builtin server with file_editor, web_search, fetch)",
-    )
+    max_steps_per_turn: int = 100
+    max_retries_per_step: int = 3
+    mcp_servers: dict[str, Any] = field(default_factory=get_default_mcp_config)
+
+    # Constants (Class variables)
+    TERMINAL_TOOL: str = field(default="crow-mcp_terminal", init=False)
+    WRITE_TOOL: str = field(default="crow-mcp_write", init=False)
+    READ_TOOL: str = field(default="crow-mcp_read", init=False)
+    EDIT_TOOL: str = field(default="crow-mcp_edit", init=False)
+    SEARCH_TOOL: str = field(default="crow-mcp_web_search", init=False)
+    FETCH_TOOL: str = field(default="crow-mcp_web_fetch", init=False)
 
     def get_builtin_mcp_config(self) -> dict[str, Any]:
         """Get the default MCP server configuration."""
-        # If mcp_servers is empty, load from file
         if not self.mcp_servers:
             return get_default_mcp_config()
         return self.mcp_servers
@@ -73,16 +88,15 @@ class Config(BaseModel):
 
 def get_default_config() -> Config:
     """Get default configuration from environment variables."""
-    # Ensure ~/.crow directory exists
-    db_path = f"sqlite:///{get_config_dir() / 'crow.db'}"
-
     return Config(
         llm=LLMConfig(
-            api_key=os.getenv("ZAI_API_KEY"),
-            base_url=os.getenv("ZAI_BASE_URL"),
-            default_model=os.getenv("DEFAULT_MODEL", "glm-5"),
-        ),
-        database_path=os.getenv("DATABASE_PATH", db_path),
-        # MCP servers passed via ACP at runtime, or use empty dict for builtin
-        mcp_servers=get_default_mcp_config(),
+            providers=[
+                LLMProvider(
+                    api_key=os.getenv("ZAI_API_KEY"), base_url=os.getenv("ZAI_BASE_URL")
+                )
+            ],
+        )
     )
+
+
+settings = get_default_config()
