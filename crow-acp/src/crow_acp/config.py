@@ -1,12 +1,13 @@
 import json
 import os
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 
-load_dotenv()
+# load_dotenv()
 
 
 def get_config_dir() -> Path:
@@ -37,20 +38,29 @@ def get_default_mcp_config(use_local: bool = True) -> dict[str, Any]:
 
 
 @dataclass
+class LLModel:
+    """Large Language Model"""
+
+    model: str = field(default=None)
+    provider: LLMProvider = field(default=None)
+
+
+@dataclass
 class LLMProvider:
     """LLM provider configuration."""
 
     # repr=False hides the key from logs, acting like Pydantic's SecretStr
-    api_key: str | None = field(default=None, repr=False)
-    base_url: str | None = None
-    default_model: str = "glm-5"
+    name: str = field(default=None)
+    api_key: str = field(default=None, repr=False)
+    base_url: str = field(default=None)
 
 
 @dataclass
 class LLMConfig:
     """LLM provider configuration."""
 
-    providers: list[LLMProvider] = field(default_factory=list)
+    providers: dict[str, LLMProvider] = field(default_factory=dict)
+    models: list[LLModel] = field(default_factory=list)
 
 
 @dataclass
@@ -102,4 +112,44 @@ def get_default_config() -> Config:
     )
 
 
-settings = get_default_config()
+def load_toml_config() -> Config:
+    """Load configuration from ~/.crow/config.toml and map it to dataclasses."""
+    config_file = get_config_dir() / "config.toml"
+    llm_config = LLMConfig()
+
+    if not config_file.exists():
+        # Fallback to default if no TOML exists (keeps your lower-level lib from crashing)
+        print(config_file)
+        return get_default_config()
+    print("Loading TOML config...")
+    with open(config_file, "rb") as f:
+        # tomllib requires reading the file in binary mode ("rb")
+        toml_data = tomllib.load(f)
+
+    # 1. Parse Providers
+    providers_data = toml_data.get("providers", {})
+    for prov_name, prov_info in providers_data.items():
+        # Try to get API key from TOML, fallback to ENV vars based on provider name
+        env_key_name = f"{prov_name.split(':')[-1].upper()}_API_KEY"
+        api_key = prov_info.get("api_key") or os.getenv(env_key_name)
+
+        llm_config.providers[prov_name] = LLMProvider(
+            name=prov_name,
+            base_url=prov_info.get("base_url"),
+            api_key=api_key,
+        )
+
+    # 2. Parse Models
+    models_data = toml_data.get("models", {})
+    for _, mod_info in models_data.items():
+        llm_config.models.append(
+            LLModel(
+                provider=mod_info.get("provider", ""),
+                model=mod_info.get("model", ""),
+            )
+        )
+
+    return Config(llm=llm_config)
+
+
+settings = load_toml_config()

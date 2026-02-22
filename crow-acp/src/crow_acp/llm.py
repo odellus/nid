@@ -8,9 +8,7 @@ import httpx
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
-from crow_acp.config import settings
-
-load_dotenv()
+from crow_acp.config import LLMProvider, settings
 
 
 def log_request(request):
@@ -23,23 +21,21 @@ def log_request(request):
 
 
 def configure_llm(
-    api_key: str | None = None,
-    base_url: str | None = None,
+    provider: LLMProvider,
     debug: bool = False,
 ) -> AsyncOpenAI:
     """
     Configure async LLM client.
 
     Args:
-        api_key: API key (defaults to ZAI_API_KEY env var)
-        base_url: Base URL (defaults to ZAI_BASE_URL env var)
+        provider: LLM provider configuration
         debug: Whether to log requests
 
     Returns:
         Configured AsyncOpenAI client
     """
-    api_key = api_key or os.getenv("ZAI_API_KEY")
-    base_url = base_url or os.getenv("ZAI_BASE_URL")
+    api_key = provider.api_key
+    base_url = provider.base_url
 
     if debug:
         http_client = httpx.AsyncClient(event_hooks={"request": [log_request]})

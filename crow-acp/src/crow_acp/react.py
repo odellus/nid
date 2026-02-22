@@ -38,7 +38,7 @@ from crow_acp.tools import (
 
 async def send_request(
     llm: AsyncOpenAI,
-    model: str,
+    config: Config,
     session: Session,
     tools: list[dict],
 ):
@@ -52,7 +52,7 @@ async def send_request(
         Streaming response from LLM
     """
     return await llm.chat.completions.create(
-        model=model,
+        model=config.llm.models[0].model,
         messages=session.messages,
         tools=tools,
         stream=True,
@@ -327,7 +327,7 @@ async def react_loop(
             return
         response = await send_request(
             llm,
-            model,
+            config,
             session,
             tools,
         )

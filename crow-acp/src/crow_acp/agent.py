@@ -225,7 +225,7 @@ class AcpAgent(Agent):
             },
             tool_definitions=tools,
             request_params={"temperature": 0.2},
-            model_identifier=self._config.llm.providers[0].default_model,
+            model_identifier=self._config.llm.models[0].model,
             db_path=self._db_path,
             cwd=cwd,
         )
