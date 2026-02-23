@@ -7,11 +7,11 @@ Encapsulates:
 - Session creation/loading
 """
 
-import hashlib
 import json
 import logging
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session as SQLAlchemySession
@@ -92,10 +92,9 @@ def lookup_or_create_prompt(
             db.close()
             return existing.id
 
-        # Create new prompt with generated ID
-        import json
+        # Create new prompt with random ID
 
-        prompt_id = f"prompt-{hashlib.sha256(template.encode()).hexdigest()[:12]}"
+        prompt_id = f"prompt-{uuid4().hex}"
 
         new_prompt = Prompt(
             id=prompt_id,
@@ -121,20 +120,28 @@ class Session:
     - Reconstruct conversation from database
     """
 
-    def __init__(self, session_id: str, db_path: str = "sqlite:///mcp_testing.db"):
+    def __init__(
+        self,
+        session_id: str,
+        db_path: str = "sqlite:///mcp_testing.db",
+        cwd: str = "/tmp",
+    ):
         """
         Initialize session with ID and database path.
 
         Args:
             session_id: Unique session identifier
             db_path: Database connection string
+            cwd: Current working directory for this session
         """
         self.session_id = session_id
         self.db_path = db_path
+        self.cwd = cwd
         self.messages = []
         self.conv_index = 0
         self._db = None
         self._model = None  # SQLAlchemy model instance
+        self.model_identifier = None  # Set in create() or load()
 
     @property
     def db(self) -> SQLAlchemySession:
@@ -208,6 +215,7 @@ class Session:
         content: list[str],
         tool_call_inputs: list[dict],
         tool_results: list[dict],
+        usage: dict | None = None,
     ):
         """
         Handle complex assistant message building + tool calls + results.
@@ -227,6 +235,9 @@ class Session:
                 role="assistant",
                 content="".join(content) if content else None,
                 reasoning_content="".join(thinking) if thinking else None,
+                prompt_tokens=usage.get("prompt_tokens") if usage else None,
+                completion_tokens=usage.get("completion_tokens") if usage else None,
+                total_tokens=usage.get("total_tokens") if usage else None,
             )
 
         # Build assistant message for LLM (with thinking and content)
@@ -322,6 +333,8 @@ class Session:
         request_params: dict[str, Any],
         model_identifier: str,
         db_path: str = "sqlite:///mcp_testing.db",
+        cwd: str = "/tmp",
+        initial_messages: list[dict[str, Any]] | None = None,
     ) -> "Session":
         """
         Factory method to create a new session.
@@ -335,6 +348,8 @@ class Session:
             request_params: LLM request parameters
             model_identifier: Model identifier string
             db_path: Database connection string
+            cwd: Current working directory for this session
+            initial_messages: Initial messages to start the session with
 
         Returns:
             New Session instance
@@ -349,9 +364,8 @@ class Session:
         system_prompt = render_template(prompt.template, **prompt_args)
 
         # Generate unique session ID (UUID-based, like everyone else)
-        import uuid
 
-        session_id = f"sess_{uuid.uuid4().hex[:16]}"
+        session_id = f"sess_{uuid4().hex}"
 
         # Create new session model
         session_model = SessionModel(
@@ -367,9 +381,50 @@ class Session:
         db.commit()
         db.close()
 
-        # Create Session instance with system message
-        session = cls(session_id, db_path)
+        # Create Session instance with system message and cwd
+        session = cls(session_id, db_path, cwd=cwd)
         session.messages = [{"role": "system", "content": system_prompt}]
+        session.model_identifier = model_identifier
+        session.tools = tool_definitions
+        session.request_params = request_params
+        session.prompt_id = prompt_id
+        session.prompt_args = prompt_args
+        session.db_path = db_path
+        session.cwd = cwd
+
+        # Add initial messages
+        if initial_messages:
+            for msg in initial_messages:
+                role = msg.get("role")
+                if role == "system":
+                    continue  # skip system messages
+                
+                if role == "user":
+                    session.add_message(role="user", content=msg.get("content"))
+                elif role == "assistant":
+                    if "tool_calls" in msg:
+                        for tc in msg["tool_calls"]:
+                            session._save_event(
+                                role="assistant",
+                                tool_call_id=tc["id"],
+                                tool_call_name=tc["function"]["name"],
+                                tool_arguments=json.loads(tc["function"]["arguments"]),
+                            )
+                        session.messages.append(
+                            {"role": "assistant", "tool_calls": msg["tool_calls"]}
+                        )
+                    else:
+                        session.add_message(
+                            role="assistant",
+                            content=msg.get("content"),
+                            reasoning_content=msg.get("reasoning_content"),
+                        )
+                elif role == "tool":
+                    session.add_message(
+                        role="tool",
+                        tool_call_id=msg.get("tool_call_id"),
+                        content=msg.get("content"),
+                    )
 
         return session
 
@@ -395,6 +450,11 @@ class Session:
         if session.model is None:
             raise ValueError(f"Session '{session_id}' not found")
 
+        session.model_identifier = session.model.model_identifier
+        session.tools = session.model.tool_definitions
+        session.request_params = session.model.request_params
+        session.prompt_id = session.model.prompt_id
+        session.prompt_args = session.model.prompt_args
         # Reconstruct messages from events
         events = (
             session.db.query(Event)

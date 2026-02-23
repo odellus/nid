@@ -50,7 +50,7 @@ class SearchResponse(BaseModel):
 
 
 @mcp.tool
-async def web_search(query: str, limit: int = 5) -> str:
+async def web_search(queries: list[str], limit: int = 10) -> str:
     """## Search Tool Instructions
     **Search the internet. USE THIS LIBERALLY.**
     If you are:
@@ -74,28 +74,31 @@ async def web_search(query: str, limit: int = 5) -> str:
     """
     searxng_url = os.getenv("SEARXNG_URL", "http://localhost:8082")
     client = AsyncClient(base_url=searxng_url)
+    results = []
+    for query in queries:
+        params = {"q": query, "format": "json"}
+        response = await client.get("/search", params=params)
+        response.raise_for_status()
 
-    params = {"q": query, "format": "json"}
-    response = await client.get("/search", params=params)
-    response.raise_for_status()
+        data = SearchResponse.model_validate_json(response.text)
 
-    data = SearchResponse.model_validate_json(response.text)
+        text = []
 
-    text = []
+        for infobox in data.infoboxes:
+            text.append(f"Infobox: {infobox.infobox}\n")
+            text.append(f"ID: {infobox.id}\n")
+            text.append(f"Content: {infobox.content}\n\n")
 
-    for infobox in data.infoboxes:
-        text.append(f"Infobox: {infobox.infobox}\n")
-        text.append(f"ID: {infobox.id}\n")
-        text.append(f"Content: {infobox.content}\n\n")
+        if not data.results:
+            text.append("No results found\n")
 
-    if not data.results:
-        text.append("No results found\n")
+        for i, result in enumerate(data.results):
+            text.append(f"Title: {result.title}\n")
+            text.append(f"URL: {result.url}\n")
+            text.append(f"Content: {result.content}\n\n")
+            if i == limit - 1:
+                break
 
-    for i, result in enumerate(data.results):
-        text.append(f"Title: {result.title}\n")
-        text.append(f"URL: {result.url}\n")
-        text.append(f"Content: {result.content}\n\n")
-        if i == limit - 1:
-            break
-
-    return "".join(text)
+        query_results = "".join(text)
+        results.append(f"Query:\n{query}\n\nResults:\n{query_results}")
+    return "\n".join(results)

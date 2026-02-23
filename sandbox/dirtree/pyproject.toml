@@ -1,10 +1,10 @@
 [project]
-name = "crow-acp-learning"
+name = "dirtree"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 dependencies = [
-    "agent-client-protocol>=0.8.0",
+    "directory-tree>=1.0.0",
     "ipython>=9.10.0",
 ]
