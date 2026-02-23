@@ -320,9 +320,8 @@ class Session:
         system_prompt = render_template(prompt.template, **prompt_args)
 
         # Generate unique session ID (UUID-based, like everyone else)
-        import uuid
 
-        session_id = f"sess_{uuid.uuid4().hex[:16]}"
+        session_id = f"sess_{uuid4().hex}"
 
         # Create new session model
         session_model = SessionModel(
@@ -344,6 +343,10 @@ class Session:
         session.model_identifier = model_identifier
         session.tools = tool_definitions
         session.request_params = request_params
+        session.prompt_id = prompt_id
+        session.prompt_args = prompt_args
+        session.db_path = db_path
+        session.cwd = cwd
 
         return session
 
@@ -372,6 +375,8 @@ class Session:
         session.model_identifier = session.model.model_identifier
         session.tools = session.model.tool_definitions
         session.request_params = session.model.request_params
+        session.prompt_id = session.model.prompt_id
+        session.prompt_args = session.model.prompt_args
         # Reconstruct messages from events
         events = (
             session.db.query(Event)

@@ -20,11 +20,11 @@ Steps to Compaction:
 """
 
 from acp.schema import NewSessionResponse
-from crow_acp import tools
 from openai import AsyncOpenAI
+from openai._utils import _typing
 
-from crow_acp.session import Session
 from crow_acp.prompt import render_template
+from crow_acp.session import Session
 
 MAX_COMPACT_TOKENS = 8192
 
@@ -47,37 +47,97 @@ def get_last_user_idx(messages: list[dict[str, str]]) -> int:
     return -1
 
 
-async def non_streaming_request(messages: list[dict], tools: list[dict], request_params: dict, llm: AsyncOpenAI) -> str:
+async def non_streaming_request(
+    model: str,
+    messages: list[dict],
+    tools: list[dict],
+    request_params: dict,
+    llm: AsyncOpenAI,
+) -> str:
     response = await llm.chat.completions.create(
-        model=session.model_identifier,
+        model=model,
         messages=messages,
-        tools=session.tools,
+        tools=tools,
         tool_choice="none",
-        **session.request_params,
+        **request_params,
     )
     return response.choices[0].message.content
 
 
+def construct_compact_prompt(messages: list[dict]) -> tuple[list[dict], int]:
+    first_message = messages[1]
+    last_usr_msg_idx = get_last_user_idx(messages)
+    last_message = messages[last_usr_msg_idx]
+    prompt = render_template(
+        COMPACTION_PROMPT,
+        first_message=first_message,
+        last_message=last_message,
+    )
+    return (
+        messages + [dict(role="user", content=prompt)],
+        last_usr_msg_idx,
+    )
 
 
-async def compact(
+async def get_middle_message(
     session: Session,
     llm: AsyncOpenAI,
-) -> str:
+) -> tuple[str, int]:
     messages = session.messages
-
-
-    # check that the last message is an assistant message
-    if messages[-1].get("role") != "assistant":
-        # we need to
-
-    # Implement the compact function here
-    session_id: str = session.session_id
+    model: str = session.model_identifier
     messages: list[dict] = session.messages
     tools: list[dict] = session.tools
     request_params: dict = session.request_params
     # Always step on the request param's max_completion_tokens
     request_params["max_completion_tokens"] = MAX_COMPACT_TOKENS
+    compact_prompt, last_usr_msg_idx = construct_compact_prompt(messages)
+    middle_message = await non_streaming_request(
+        model=model,
+        messages=compact_prompt,
+        tools=tools,
+        request_params=request_params,
+        llm=llm,
+    )
+    return middle_message, last_usr_msg_idx
 
 
-    return response.choices[0].message.content
+async def compact(
+    session: Session,
+    llm: AsyncOpenAI,
+    cwd: str,
+) -> Session:
+    """We are going to compact the conversation by doing the following steps:
+    1. Get the middle message
+    2. Replace the middle of messages with the compacted message
+    3. Create a new session with the new messages
+    4. Return the new session
+    """
+    # Summarize the conversation's middle
+    middle_message, last_usr_msg_idx = await get_middle_message(session, llm)
+    messages = session.messages
+    messages = (
+        messages[:1]
+        + [dict(role="assistant", content=middle_message)]
+        + messages[last_usr_msg_idx:]  # last user message is included
+    )
+
+    new_session = Session.create(
+        prompt_id=session.prompt_id,
+        prompt_args=session.prompt_args,
+        tool_definitions=session.tools,
+        request_params=session.request_params,
+        model_identifier=session.model_identifier,
+        db_path=settings.database_path,
+        cwd=cwd,
+    )
+    """"""
+    #########################################
+    #
+    # TO DO
+    # - we need to actually add the messages
+    #   to the new session with methods in
+    #   Session. This is a fake rollout
+    #
+    #########################################
+
+    return new_session

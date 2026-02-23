@@ -34,7 +34,7 @@ class Prompt(Base):
     )
     name = Column(Text, nullable=False, doc="Display name")
     template = Column(Text, nullable=False, doc="Jinja2 template content")
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=datetime.now)
 
     # Relationship to sessions
     sessions = relationship("Session", back_populates="prompt")
@@ -55,13 +55,18 @@ class Session(Base):
         Text, primary_key=True, doc="Unique hash of prompt_id + prompt_args + tools"
     )
     prompt_id = Column(
-        Text, ForeignKey("prompts.id"), nullable=True, doc="Reference to prompt template"
+        Text,
+        ForeignKey("prompts.id"),
+        nullable=True,
+        doc="Reference to prompt template",
     )
     prompt_args = Column(
         JSON, nullable=True, doc="Arguments used to render the prompt template"
     )
     system_prompt = Column(
-        Text, nullable=False, doc="The rendered system prompt (cached for reconstruction)"
+        Text,
+        nullable=False,
+        doc="The rendered system prompt (cached for reconstruction)",
     )
     tool_definitions = Column(
         JSON, nullable=False, doc="Full JSON schemas of all available MCP tools"
@@ -77,7 +82,7 @@ class Session(Base):
     created_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
+        default=datetime.now,
         doc="When this agent configuration was first used",
     )
 
@@ -110,7 +115,7 @@ class Event(Base):
     timestamp = Column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
+        default=datetime.now,
         doc="Precise timing for latency and log-order analysis",
     )
     role = Column(
