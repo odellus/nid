@@ -107,7 +107,8 @@ async def compact(
     session: Session,
     llm: AsyncOpenAI,
     cwd: str,
-) -> None:
+    on_compact: callable = None,
+) -> Session:
     """
     Compact the conversation in-place.
 
@@ -120,6 +121,16 @@ async def compact(
     3. Create a new session in the database
     4. Swap session IDs in the database (old -> archive, new -> old_id)
     5. Update the session object in-place with the new state
+    6. Call on_compact callback if provided (needed for async task contexts)
+
+    Args:
+        session: The session to compact
+        llm: The LLM client for summarization
+        cwd: Current working directory
+        on_compact: Callback function(session_id, compacted_session) called after compaction
+
+    Returns:
+        The compacted session (same object, updated in-place)
     """
     # Summarize the conversation's middle
     logger.info("Compacting conversation...")
@@ -154,9 +165,7 @@ async def compact(
         new_session_id=new_session.session_id,
         db_path=session.db_path,
     )
-    logger.info(
-        f"Session previously with id {original_session_id} archived"
-    )
+    logger.info(f"Session previously with id {original_session_id} archived")
     logger.info(f"New Session now has id {original_session_id}")
 
     # Update the new session's ID to match the original (post-swap)
@@ -166,3 +175,9 @@ async def compact(
     # This ensures all references (local variables in other functions) see the new state
     session.update_from(new_session)
     logger.info("Session updated in-place - all references now see compacted state")
+
+    # Callback for async task contexts where reference passing doesn't work
+    if on_compact:
+        on_compact(session.session_id, session)
+
+    return session

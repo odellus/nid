@@ -312,6 +312,7 @@ async def react_loop(
     session_id: str,
     state_accumulators: dict[str, dict],
     max_turns: int = 50000,
+    on_compact: callable = None,
 ):
     """
     Main ReAct loop with cancellation support.
@@ -362,6 +363,7 @@ async def react_loop(
             session.add_assistant_response(
                 thinking, content, tool_call_inputs, [], usage
             )
+            return
 
         ################################################
         # okay the llm has responded let's check usage
@@ -381,12 +383,14 @@ async def react_loop(
             # Compact updates the session in-place, so all references
             # (including the dictionary and local variables) automatically
             # see the new compacted state - no manual reference updates needed!
-            await compact(
+            logger.info(f"Pre-compacted session length: {len(session.messages)}")
+            session = await compact(
                 session=session,
                 llm=llm,
                 cwd=session.cwd,
+                on_compact=on_compact,
             )
-
+            logger.info(f"Post-compacted session length: {len(session.messages)}")
             logger.info("Compaction complete - session updated in-place.")
 
         # This ends the react loop

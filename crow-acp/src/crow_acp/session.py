@@ -198,22 +198,6 @@ class Session:
                 total_tokens=usage.get("total_tokens") if usage else None,
             )
 
-        # Build assistant message for LLM (with thinking and content)
-        if len(content) > 0 and len(thinking) > 0:
-            self.messages.append(
-                {
-                    "role": "assistant",
-                    "content": "".join(content),
-                    "reasoning_content": "".join(thinking),
-                }
-            )
-        elif len(thinking) > 0:
-            self.messages.append(
-                {"role": "assistant", "reasoning_content": "".join(thinking)}
-            )
-        elif len(content) > 0:
-            self.messages.append({"role": "assistant", "content": "".join(content)})
-
         # Add tool calls and save them
         if len(tool_call_inputs) > 0:
             self.messages.append({"role": "assistant", "tool_calls": tool_call_inputs})

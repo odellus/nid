@@ -489,6 +489,10 @@ class AcpAgent(Agent):
 
                 llm = configure_llm(provider=provider, debug=False)
 
+                def on_compact(session_id: str, compacted_session: Session):
+                    """Update sessions dict after compaction (needed for async task contexts)."""
+                    self._sessions[session_id] = compacted_session
+
                 async for chunk in react_loop(
                     conn=self._conn,
                     config=self._config,
@@ -501,6 +505,7 @@ class AcpAgent(Agent):
                     cancel_event=self._cancel_events[session_id],
                     session_id=session_id,
                     state_accumulators=self._state_accumulators,
+                    on_compact=on_compact,
                 ):
                     chunk_type = chunk.get("type")
 
