@@ -95,6 +95,8 @@ class Config:
     # Compaction parameter
     MAX_COMPACT_TOKENS: int = field(default=120000, init=False)
 
+    N_STEPS_BACK_COMPACT: int = field(default=8, init=False)
+
     def get_builtin_mcp_config(self) -> dict[str, Any]:
         """Get the default MCP server configuration."""
         if not self.mcp_servers:
