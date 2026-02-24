@@ -10,28 +10,16 @@ mcpServers:
       - run
       - crow-mcp
 
-db_uri: postgresql://postgres:${POSTGRES_PASSWORD}@localhost:${POSTGRES_PORT}/postgres
-
+# db_uri: postgresql://postgres:${POSTGRES_PASSWORD}@localhost:${POSTGRES_PORT}/postgres
+db_uri: sqlite:///Users/thomas.wood/.crow/crow.db
 ###
 providers:
-  zai:
-    api_key: ${ZAI_API_KEY}
-    base_url: https://api.z.ai/api/coding/paas/v4
-  llamacpp:
-    api_key: ${LLAMACPP_API_KEY}
-    base_url: http://coast-after-3:1234/v1
-  openrouter:
-    api_key: ${OPENROUTER_API_KEY}
-    base_url: https://openrouter.ai/api/v1
+  braintrust:
+    api_key: ${BRAINTRUST_API_KEY}
+    base_url: https://d3jp9my702tbm7.cloudfront.net/v1/proxy
 
 ###
 models:
-  glm-5:
+  claude-opus-4.6:
     provider: zai
-    model: glm-5
-  qwen3-coder-next:
-    provider: llamacpp
-    model: qwen3-coder-next
-  gemini-3.1-pro:
-    provider: openrouter
-    model: google/gemini-3.1-pro-preview
+    model: arn:aws:bedrock:us-east-1:166979434163:inference-profile/us.anthropic.claude-opus-4-6-v1

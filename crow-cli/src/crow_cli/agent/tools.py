@@ -47,7 +47,7 @@ from acp.schema import (
 )
 from fastmcp import Client as MCPClient
 
-from crow_cli.agent.config import Config
+from crow_cli.agent.configure import Config
 from crow_cli.agent.session import Session
 
 

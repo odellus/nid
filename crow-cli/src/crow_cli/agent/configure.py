@@ -11,6 +11,10 @@ from dotenv import load_dotenv
 ENV_PATTERN = re.compile(r"\$\{([^}]+)\}")
 
 
+def get_default_config_dir() -> Path:
+    return Path(os.path.join(os.getenv("HOME"), ".crow"))
+
+
 def resolve_env_vars(value: Any) -> Any:
     """Recursively traverse dictionaries/lists and replace ${VAR} with env variables."""
     if isinstance(value, str):
@@ -61,7 +65,7 @@ class Config:
 
     config_dir: Path
     llm: LLMConfig = field(default_factory=LLMConfig)
-    database_path: str = ""
+    db_uri: str = ""
     mcp_servers: dict[str, Any] = field(default_factory=dict)
 
     max_steps_per_turn: int = 100
@@ -111,7 +115,7 @@ class Config:
             db_fallback = os.getenv(
                 "DATABASE_PATH", f"sqlite:///{target_dir / 'crow.db'}"
             )
-            return cls(config_dir=target_dir, database_path=db_fallback)
+            return cls(config_dir=target_dir, db_uri=db_fallback)
 
         # 2. Load and parse YAML
         with open(yaml_file, "r") as f:
@@ -148,5 +152,5 @@ class Config:
             config_dir=target_dir,
             llm=llm_config,
             mcp_servers=parsed_config.get("mcpServers", {}),
-            database_path=db_uri,
+            db_uri=db_uri,
         )

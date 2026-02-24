@@ -48,7 +48,7 @@ from acp.schema import (
 )
 from fastmcp import Client as MCPClient
 
-from crow_cli.agent.config import Config, get_config_dir, load_toml_config
+from crow_cli.agent.configure import Config, get_default_config_dir
 from crow_cli.agent.context import context_fetcher, get_directory_tree
 from crow_cli.agent.llm import configure_llm
 from crow_cli.agent.logger import setup_logger
@@ -87,9 +87,9 @@ class AcpAgent(Agent):
         - In-memory dictionaries for sessions and MCP clients
         - LLM client from configuration
         """
-        self._config = config or load_toml_config(get_config_dir())
+        self._config = config or Config(config_dir=get_default_config_dir())
         self._logger = setup_logger(self._config.config_dir / "crow-cli.log")
-        self._db_path = self._config.database_path
+        self._db_uri = self._config.db_uri
         self._exit_stack = AsyncExitStack()
         self._sessions: dict[str, Session] = {}
         self._session_id: str | None = None
@@ -142,7 +142,7 @@ class AcpAgent(Agent):
         ]
 
         # Ensure DB tables exist and crow-v1 prompt is seeded
-        ensure_database(self._db_path)
+        # ensure_database(self._db_uri)
 
     def on_connect(self, conn: Client) -> None:
         """Store connection for sending updates"""
@@ -235,7 +235,7 @@ class AcpAgent(Agent):
         template_path = Path(__file__).parent / "prompts" / "system_prompt.jinja2"
         template = template_path.read_text()
         prompt_id = lookup_or_create_prompt(
-            template, name="crow-default", db_path=self._db_path
+            template, name="crow-default", db_uri=self._db_uri
         )
         display_tree = get_directory_tree(cwd)
         agent_path = os.path.join(cwd, "AGENTS.md")
@@ -261,7 +261,7 @@ class AcpAgent(Agent):
             tool_definitions=tools,
             request_params={"temperature": 0.2},
             model_identifier=self._config.llm.models[0].model,
-            db_path=self._db_path,
+            db_uri=self._db_uri,
             cwd=cwd,
         )
 
@@ -303,7 +303,7 @@ class AcpAgent(Agent):
 
         try:
             # Load session from database
-            session = Session.load(session_id, db_path=self._db_path)
+            session = Session.load(session_id, db_uri=self._db_uri)
 
             # Setup MCP client (same as new_session)
             # Use default config if no servers provided

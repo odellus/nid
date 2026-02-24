@@ -9,11 +9,12 @@ from typing import Any
 from uuid import uuid4
 
 from coolname import generate_slug
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session as SQLAlchemySession
+
 from crow_cli.agent.db import Base, Message, Prompt, create_database
 from crow_cli.agent.db import Session as SessionModel
 from crow_cli.agent.prompt import render_template
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session as SQLAlchemySession
 
 
 def get_coolname() -> str:
@@ -24,15 +25,15 @@ def get_coolname() -> str:
 def lookup_or_create_prompt(
     template: str,
     name: str,
-    db_path: str = "sqlite:///crow.db",
+    db_uri: str = "sqlite:///crow.db",
 ) -> str:
     """
     Lookup existing prompt by template content, or create new one if not found.
     """
     # Ensure database tables exist
-    create_database(db_path)
+    create_database(db_uri)
 
-    db = SQLAlchemySession(create_engine(db_path))
+    db = SQLAlchemySession(create_engine(db_uri))
     try:
         existing = db.query(Prompt).filter_by(template=template).first()
         if existing:
@@ -58,11 +59,11 @@ class Session:
     def __init__(
         self,
         session_id: str,
-        db_path: str = "sqlite:///crow.db",
+        db_uri: str = "sqlite:///crow.db",
         cwd: str = "/tmp",
     ):
         self.session_id = session_id
-        self.db_path = db_path
+        self.db_uri = db_uri
         self.cwd = cwd
         self.messages: list[dict] = []
         self._db = None
@@ -73,7 +74,7 @@ class Session:
     def db(self) -> SQLAlchemySession:
         """Lazy-load database connection"""
         if self._db is None:
-            engine = create_engine(self.db_path)
+            engine = create_engine(self.db_uri)
             self._db = SQLAlchemySession(engine)
         return self._db
 
@@ -164,12 +165,12 @@ class Session:
         tool_definitions: list[dict],
         request_params: dict[str, Any],
         model_identifier: str,
-        db_path: str = "sqlite:///crow.db",
+        db_uri: str = "sqlite:///crow.db",
         cwd: str = "/tmp",
         initial_messages: list[dict[str, Any]] | None = None,
     ) -> "Session":
         """Factory method to create a new session."""
-        db = SQLAlchemySession(create_engine(db_path))
+        db = SQLAlchemySession(create_engine(db_uri))
 
         # Load and render prompt
         prompt = db.query(Prompt).filter_by(id=prompt_id).first()
@@ -195,7 +196,7 @@ class Session:
         db.close()
 
         # Build session instance
-        session = cls(session_id, db_path, cwd=cwd)
+        session = cls(session_id, db_uri, cwd=cwd)
         session.model_identifier = model_identifier
         session.tools = tool_definitions
         session.request_params = request_params
@@ -215,9 +216,9 @@ class Session:
         return session
 
     @classmethod
-    def load(cls, session_id: str, db_path: str = "sqlite:///crow.db") -> "Session":
+    def load(cls, session_id: str, db_uri: str = "sqlite:///crow.db") -> "Session":
         """Factory method to load existing session from database."""
-        session = cls(session_id, db_path)
+        session = cls(session_id, db_uri)
 
         if session.model is None:
             raise ValueError(f"Session '{session_id}' not found")
@@ -244,7 +245,7 @@ class Session:
         cls,
         old_session_id: str,
         new_session_id: str,
-        db_path: str = "sqlite:///crow.db",
+        db_uri: str = "sqlite:///crow.db",
     ) -> str:
         """
         Atomically swap session IDs for compaction.
@@ -254,7 +255,7 @@ class Session:
         """
         archive_id = f"sess_archive_{uuid4().hex}"
 
-        db = SQLAlchemySession(create_engine(db_path))
+        db = SQLAlchemySession(create_engine(db_uri))
         try:
             # Move old session to archive
             old_session = (
@@ -289,7 +290,7 @@ class Session:
     def update_from(self, other: "Session") -> None:
         """Update this session's state from another session in-place."""
         self.session_id = other.session_id
-        self.db_path = other.db_path
+        self.db_uri = other.db_uri
         self.cwd = other.cwd
         self.messages = other.messages
         self.model_identifier = other.model_identifier

@@ -94,9 +94,9 @@ class Message(Base):
     session = relationship("Session", back_populates="messages")
 
 
-def create_database(db_path: str = "sqlite:///crow.db") -> None:
+def create_database(db_uri: str = "sqlite:///crow.db") -> None:
     """Create the database and tables."""
-    engine = create_engine(db_path)
+    engine = create_engine(db_uri)
     Base.metadata.create_all(engine)
 
 

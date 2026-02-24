@@ -134,7 +134,7 @@ async def compact(
         tool_definitions=session.tools,
         request_params=session.request_params,
         model_identifier=session.model_identifier,
-        db_path=session.db_path,
+        db_uri=session.db_uri,
         cwd=cwd,
         initial_messages=compacted_messages,
     )
@@ -147,7 +147,7 @@ async def compact(
     Session.swap_session_id(
         old_session_id=original_session_id,
         new_session_id=new_session.session_id,
-        db_path=session.db_path,
+        db_uri=session.db_uri,
     )
     logger.info(f"Session previously with id {original_session_id} archived")
     logger.info(f"New Session now has id {original_session_id}")

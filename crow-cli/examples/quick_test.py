@@ -4,25 +4,26 @@ import asyncio
 import tempfile
 from pathlib import Path
 
+from sqlalchemy import create_engine
+
 from crow_cli.agent.db import Base, create_database
 from crow_cli.agent.session import Session, get_coolname, lookup_or_create_prompt
-from sqlalchemy import create_engine
 
 
 def test_session():
     # Create temp db
     f = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
-    db_path = f"sqlite:///{f.name}"
+    db_uri = f"sqlite:///{f.name}"
     f.close()
 
-    create_database(db_path)
-    print(f"Created db: {db_path}")
+    create_database(db_uri)
+    print(f"Created db: {db_uri}")
 
     # Create a prompt
     prompt_id = lookup_or_create_prompt(
         template="You are {{name}}. Workspace: {{workspace}}",
         name="test-prompt",
-        db_path=db_path,
+        db_uri=db_uri,
     )
     print(f"Created prompt: {prompt_id}")
 
@@ -33,7 +34,7 @@ def test_session():
         tool_definitions=[{"name": "test_tool"}],
         request_params={"temperature": 0.7},
         model_identifier="test-model",
-        db_path=db_path,
+        db_uri=db_uri,
         cwd="/tmp",
     )
     print(f"Created session: {session.session_id}")
@@ -48,7 +49,7 @@ def test_session():
     print(f"\nAdded 4 messages. Total: {len(session.messages)}")
 
     # Load session from db
-    loaded = Session.load(session.session_id, db_path)
+    loaded = Session.load(session.session_id, db_uri)
     print(f"\nLoaded session: {loaded.session_id}")
     print(f"  - Messages: {len(loaded.messages)}")
 

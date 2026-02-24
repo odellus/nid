@@ -63,7 +63,7 @@ def run_agentmain():
 # ============================================================================
 
 
-def get_db_path() -> str:
+def get_db_uri() -> str:
     """Get the default database path."""
     return os.path.expanduser("~/.crow/crow.db")
 
@@ -80,13 +80,13 @@ def inspect_db(
     """Inspect the Crow database - see session state, messages, etc."""
     import json
 
-    db_path = get_db_path()
+    db_uri = get_db_uri()
 
-    if not os.path.exists(db_path):
+    if not os.path.exists(db_uri):
         if json_output:
-            print(json.dumps({"error": f"Database not found at {db_path}"}))
+            print(json.dumps({"error": f"Database not found at {db_uri}"}))
         else:
-            client._console.print(f"[red]Database not found at {db_path}[/red]")
+            client._console.print(f"[red]Database not found at {db_uri}[/red]")
         raise SystemExit(1)
 
     conn = sqlite3.connect(db_path)

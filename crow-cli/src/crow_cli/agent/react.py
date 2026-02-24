@@ -24,7 +24,7 @@ from fastmcp import Client as MCPClient
 from openai import AsyncOpenAI
 
 from crow_cli.agent.compact import compact
-from crow_cli.agent.config import Config
+from crow_cli.agent.configure import Config
 from crow_cli.agent.context import maximal_deserialize
 from crow_cli.agent.session import Session
 from crow_cli.agent.tools import (
