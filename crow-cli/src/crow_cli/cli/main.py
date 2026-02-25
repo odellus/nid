@@ -329,6 +329,25 @@ async def _run_async(
             client._console.print(
                 f'[dim]Use crow-cli run -s {actual_session_id} "<your—message>" to continue this conversation[/dim]'
             )
+    except Exception as e:
+        # If something went wrong, try to get stderr before re-raising
+        try:
+            if hasattr(proc, "_stderr_reader") and not proc._stderr_reader.done():
+                stderr_output = await proc._stderr_reader
+                if stderr_output and stderr_output.strip():
+                    client._console.print()
+                    client._console.print("[red]═══ Agent subprocess failed ═══[/red]")
+                    client._console.print()
+                    client._console.print(stderr_output.decode())
+                    client._console.print()
+                    client._console.print(
+                        "[yellow]The agent subprocess exited with an error. "
+                        "The traceback above shows what went wrong.[/yellow]"
+                    )
+        except Exception:
+            # If we can't read stderr, just continue with the original error
+            pass
+        raise e
 
     finally:
         # Cleanup

@@ -187,11 +187,14 @@ class CrowClient(Client):
             "crow_cli.agent.main",
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,  # Capture stderr for error reporting
             cwd=cwd,
         )
         if proc.stdin is None or proc.stdout is None:
             self._console.print("[red]Agent process does not expose stdio pipes[/red]")
             raise SystemExit(1)
+        # Store stderr reader for later error reporting
+        proc._stderr_reader = asyncio.create_task(proc.stderr.read())
         return proc
 
     async def send_prompt(
@@ -255,15 +258,37 @@ async def connect_client(
     proc: asyncio.subprocess.Process, client: CrowClient
 ) -> ClientSideConnection:
     """Initialize ACP connection to agent."""
-    conn = connect_to_agent(client, proc.stdin, proc.stdout)
+    try:
+        conn = connect_to_agent(client, proc.stdin, proc.stdout)
 
-    await conn.initialize(
-        protocol_version=PROTOCOL_VERSION,
-        client_capabilities=ClientCapabilities(),
-        client_info=Implementation(
-            name="crow-client",
-            title="Crow Client",
-            version="0.1.0",
-        ),
-    )
-    return conn
+        await conn.initialize(
+            protocol_version=PROTOCOL_VERSION,
+            client_capabilities=ClientCapabilities(),
+            client_info=Implementation(
+                name="crow-client",
+                title="Crow Client",
+                version="0.1.0",
+            ),
+        )
+        return conn
+    except Exception as e:
+        # If connection fails, try to read stderr to show the actual error
+        try:
+            if hasattr(proc, '_stderr_reader') and not proc._stderr_reader.done():
+                # Wait a moment for stderr to be available
+                await asyncio.sleep(0.1)
+                stderr_output = await proc._stderr_reader
+                if stderr_output:
+                    client._console.print()
+                    client._console.print("[red]═══ Agent subprocess failed ═══[/red]")
+                    client._console.print()
+                    client._console.print(stderr_output.decode())
+                    client._console.print()
+                    client._console.print(
+                        "[yellow]The agent subprocess exited with an error. "
+                        "The traceback above shows what went wrong.[/yellow]"
+                    )
+        except Exception:
+            # If we can't read stderr, just continue with the original error
+            pass
+        raise e
