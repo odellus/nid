@@ -233,7 +233,7 @@ def run_init():
         pg_port = Prompt.ask("PostgreSQL port", default="3492")
         env_vars["POSTGRES_PASSWORD"] = pg_password
         env_vars["POSTGRES_PORT"] = pg_port
-        db_uri = f"postgresql://postgres:${{POSTGRES_PASSWORD}}@localhost:${{POSTGRES_PORT}}/crow"
+        db_uri = f"postgresql://postgres:${{POSTGRES_PASSWORD}}@localhost:${{POSTGRES_PORT}}/postgres"
     else:
         db_uri = f"sqlite:///{config_dir / 'crow.db'}"
         console.print(f"[dim]Using SQLite at {config_dir / 'crow.db'}[/dim]")
