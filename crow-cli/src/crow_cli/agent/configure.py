@@ -51,6 +51,8 @@ class LLModel:
     name: str
     provider_name: str
     model_id: str
+    # supports_vision: bool = False
+    """Whether this model supports vision/image inputs"""
 
 
 @dataclass
@@ -169,6 +171,7 @@ class Config:
                 name=m_name,
                 provider_name=m_data.get("provider", ""),
                 model_id=m_data.get("model", ""),
+                # supports_vision=m_data.get("supports_vision", False),
             )
 
         # Database URI (fallback to sqlite in the config dir if not provided)

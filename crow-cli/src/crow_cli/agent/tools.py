@@ -209,9 +209,9 @@ async def execute_acp_terminal(
         elif exit_code not in (None, 0):
             return f"❌ Command failed with exit code: {exit_code}{truncated_note}\n\nOutput:\n{output}"
         else:
-            return (
-                f"✅ Command executed successfully{truncated_note}\n\nOutput:\n{output}"
-            )
+            if truncated_note:
+                return f"{output}\n\n{truncated_note.strip()}"
+            return output
 
     except Exception as e:
         logger.error(f"Error executing ACP terminal: {e}", exc_info=True)

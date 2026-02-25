@@ -10,11 +10,15 @@ No wrapper, no nested agents - just one clean Agent(acp.Agent) implementation.
 """
 
 import asyncio
+import base64
+import mimetypes
 import os
 import uuid
 from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import Any
+
+import httpx
 
 from acp import (
     PROTOCOL_VERSION,
@@ -40,6 +44,7 @@ from acp.schema import (
     ImageContentBlock,
     Implementation,
     McpServerStdio,
+    PromptCapabilities,
     ResourceContentBlock,
     SessionConfigOption,
     SetSessionConfigOptionResponse,
@@ -49,7 +54,7 @@ from acp.schema import (
 from fastmcp import Client as MCPClient
 
 from crow_cli.agent.configure import Config, get_default_config_dir
-from crow_cli.agent.context import context_fetcher, get_directory_tree
+from crow_cli.agent.context import context_fetcher, get_directory_tree, uri_to_path
 from crow_cli.agent.llm import configure_llm
 from crow_cli.agent.logger import setup_logger
 from crow_cli.agent.mcp_client import create_mcp_client_from_acp, get_tools
@@ -185,6 +190,11 @@ class AcpAgent(Agent):
             protocol_version=PROTOCOL_VERSION,
             agent_capabilities=AgentCapabilities(
                 load_session=True,  # We support session loading
+                prompt_capabilities=PromptCapabilities(
+                    image=True,  # We support image content blocks for vision models
+                    audio=False,  # Not yet implemented
+                    embedded_context=True,  # We support embedded resources
+                ),
             ),
             agent_info=Implementation(
                 name="crow",
@@ -423,8 +433,8 @@ class AcpAgent(Agent):
                 self._logger.error("Session not found: %s", session_id)
                 return PromptResponse(stop_reason="cancelled")
 
-            # Extract text from prompt blocks
-            text_list = []
+            # Build user message content (supports text, images, and resource links)
+            user_content = []
             for block in prompt:
                 _type = (
                     block.get("type", "")
@@ -437,7 +447,72 @@ class AcpAgent(Agent):
                         if isinstance(block, dict)
                         else getattr(block, "text", "")
                     )
-                    text_list.append(text)
+                    user_content.append({"type": "text", "text": text})
+                elif _type == "image":
+                    # Handle ACP image content block
+                    # ACP format: {"type": "image", "mimeType": "image/png", "data": "base64..."}
+                    # or with uri: {"type": "image", "mimeType": "image/png", "uri": "..."}
+                    # OpenAI format: {"type": "image_url", "image_url": {"url": "data:...base64..."}}
+                    mime_type = (
+                        block.get("mimeType", "")
+                        if isinstance(block, dict)
+                        else getattr(block, "mimeType", "")
+                    )
+                    data = (
+                        block.get("data", "")
+                        if isinstance(block, dict)
+                        else getattr(block, "data", "")
+                    )
+                    uri = (
+                        block.get("uri", "")
+                        if isinstance(block, dict)
+                        else getattr(block, "uri", "")
+                    )
+                    
+                    # Build the image_url value (base64 data URL required for llama.cpp)
+                    if data:
+                        # Already base64-encoded - use as-is
+                        if not mime_type:
+                            mime_type = "image/png"  # Default fallback
+                        image_url_value = f"data:{mime_type};base64,{data}"
+                    elif uri:
+                        # Fetch and encode the image from URI
+                        try:
+                            if uri.startswith("file://"):
+                                # Read local file
+                                file_path = uri_to_path(uri)
+                                with open(file_path, "rb") as f:
+                                    image_bytes = f.read()
+                            elif uri.startswith(("http://", "https://")):
+                                # Fetch from URL
+                                async with httpx.AsyncClient() as client:
+                                    resp = await client.get(uri)
+                                    image_bytes = resp.content
+                            else:
+                                self._logger.warning(f"Unsupported URI scheme: {uri}")
+                                continue
+                            
+                            # Detect mime type if not provided
+                            if not mime_type:
+                                mime_type = mimetypes.guess_type(uri)[0] or "image/png"
+                            
+                            # Base64 encode
+                            data = base64.b64encode(image_bytes).decode("utf-8")
+                            image_url_value = f"data:{mime_type};base64,{data}"
+                        except Exception as e:
+                            self._logger.error(f"Failed to fetch image from URI {uri}: {e}")
+                            continue
+                    else:
+                        self._logger.warning(f"Image block missing data or uri: {block}")
+                        continue
+                    
+                    # OpenAI expects this format:
+                    # {"type": "image_url", "image_url": {"url": "data:image/png;base64,..."}}
+                    user_content.append({
+                        "type": "image_url",
+                        "image_url": {"url": image_url_value}
+                    })
+                        
                 elif _type == "resource_link":
                     self._logger.info(f"block type: {type(block)}")
                     uri = (
@@ -445,10 +520,11 @@ class AcpAgent(Agent):
                         if isinstance(block, dict)
                         else getattr(block, "uri", "")
                     )
-                    text_list.append(context_fetcher(uri))
+                    fetched = context_fetcher(uri)
+                    user_content.append({"type": "text", "text": fetched})
 
-            # Add user message to session
-            session.add_message({"role": "user", "content": " ".join(text_list)})
+            # Add user message to session with content array (supports multimodal)
+            session.add_message({"role": "user", "content": user_content})
 
             # Clear cancel event for this new prompt
             cancel_event = self._cancel_events.get(session_id)
