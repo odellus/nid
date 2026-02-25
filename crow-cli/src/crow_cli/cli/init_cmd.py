@@ -1,7 +1,7 @@
 """
 crow-cli init - Interactive configuration setup wizard.
 
-Builds config.yaml and .env in ~/.crow-test (or CROW_CONFIG_DIR).
+Builds config.yaml and .env in ~/.crow (or CROW_CONFIG_DIR).
 """
 
 import getpass

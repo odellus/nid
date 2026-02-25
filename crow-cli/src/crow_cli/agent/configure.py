@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 # Regex to find ${VAR_NAME} in strings
 ENV_PATTERN = re.compile(r"\$\{([^}]+)\}")
 
-CROW_DIR = ".crow-test"
+CROW_DIR = ".crow"
 
 
 def get_default_config_dir() -> Path:
