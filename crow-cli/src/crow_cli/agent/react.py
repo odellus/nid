@@ -57,6 +57,7 @@ async def send_request(
         messages=session.messages,
         tools=tools,
         stream=True,
+        max_tokens=8192,
         parallel_tool_calls=True,
     )
 
@@ -224,6 +225,9 @@ async def execute_tool_calls(
         )
 
         try:
+            logger.info(
+                f"Raw tool_args type={type(tool_args).__name__} value={tool_args}"
+            )
             arg_dict = maximal_deserialize(tool_args)
             if not isinstance(arg_dict, dict):
                 # LLM produced malformed JSON for tool arguments.
@@ -231,9 +235,7 @@ async def execute_tool_calls(
                 # doesn't poison future API calls with invalid JSON.
                 raw_args = tool_call["function"]["arguments"]
                 tool_call["function"]["arguments"] = "{}"
-                logger.error(
-                    f"Malformed tool arguments for {tool_name}: {raw_args}"
-                )
+                logger.error(f"Malformed tool arguments for {tool_name}: {raw_args}")
                 result_content = (
                     f"Error: Your tool call for '{tool_name}' had malformed arguments "
                     f"that could not be parsed as JSON. Raw arguments: {raw_args!r}\n"
