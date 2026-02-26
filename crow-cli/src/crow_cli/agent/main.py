@@ -19,7 +19,6 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-
 from acp import (
     PROTOCOL_VERSION,
     Agent,
@@ -436,17 +435,33 @@ class AcpAgent(Agent):
             # Build user message content (supports text, images, and resource links)
             user_content = []
             for block in prompt:
+                self._logger.info(f"block type: {type(block)}")
                 _type = (
                     block.get("type", "")
                     if isinstance(block, dict)
                     else getattr(block, "type", "")
                 )
+                self._logger.info(f"block type: {_type}")
                 if _type == "text":
                     text = (
                         block.get("text", "")
                         if isinstance(block, dict)
                         else getattr(block, "text", "")
                     )
+                    user_content.append({"type": "text", "text": text})
+                elif _type == "resource":
+                    resource = (
+                        block.get("resource", "")
+                        if isinstance(block, dict)
+                        else getattr(block, "resource", "")
+                    )
+                    text = (
+                        resource.get("text", "")
+                        if isinstance(resource, dict)
+                        else getattr(resource, "text", "")
+                    )
+                    # self._logger.info(f"resource: {resource}")
+                    # self._logger.info(f"text: {text}")
                     user_content.append({"type": "text", "text": text})
                 elif _type == "image":
                     # Handle ACP image content block
@@ -468,7 +483,7 @@ class AcpAgent(Agent):
                         if isinstance(block, dict)
                         else getattr(block, "uri", "")
                     )
-                    
+
                     # Build the image_url value (base64 data URL required for llama.cpp)
                     if data:
                         # Already base64-encoded - use as-is
@@ -491,36 +506,39 @@ class AcpAgent(Agent):
                             else:
                                 self._logger.warning(f"Unsupported URI scheme: {uri}")
                                 continue
-                            
+
                             # Detect mime type if not provided
                             if not mime_type:
                                 mime_type = mimetypes.guess_type(uri)[0] or "image/png"
-                            
+
                             # Base64 encode
                             data = base64.b64encode(image_bytes).decode("utf-8")
                             image_url_value = f"data:{mime_type};base64,{data}"
                         except Exception as e:
-                            self._logger.error(f"Failed to fetch image from URI {uri}: {e}")
+                            self._logger.error(
+                                f"Failed to fetch image from URI {uri}: {e}"
+                            )
                             continue
                     else:
-                        self._logger.warning(f"Image block missing data or uri: {block}")
+                        self._logger.warning(
+                            f"Image block missing data or uri: {block}"
+                        )
                         continue
-                    
+
                     # OpenAI expects this format:
                     # {"type": "image_url", "image_url": {"url": "data:image/png;base64,..."}}
-                    user_content.append({
-                        "type": "image_url",
-                        "image_url": {"url": image_url_value}
-                    })
-                        
+                    user_content.append(
+                        {"type": "image_url", "image_url": {"url": image_url_value}}
+                    )
+
                 elif _type == "resource_link":
-                    self._logger.info(f"block type: {type(block)}")
                     uri = (
                         block.get("uri", "")
                         if isinstance(block, dict)
                         else getattr(block, "uri", "")
                     )
-                    fetched = context_fetcher(uri)
+                    self._logger.info(f"resource uri: {uri}")
+                    fetched = context_fetcher(uri, self._logger)
                     user_content.append({"type": "text", "text": fetched})
 
             # Add user message to session with content array (supports multimodal)

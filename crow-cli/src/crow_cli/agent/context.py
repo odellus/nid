@@ -1,6 +1,7 @@
 import json
 import os
 import re
+from logging import Logger
 from typing import Any
 from urllib.parse import urlparse
 from urllib.request import url2pathname
@@ -45,7 +46,7 @@ def number_lines(content: str) -> list[str]:
     return [f"{k:6}\t{line}" for k, line in enumerate(content.split("\n"))]
 
 
-def context_fetcher(uri: str) -> str:
+def context_fetcher(uri: str, logger: Logging) -> str:
 
     res = find_line_numbers(uri)
     if res["status"] == "success":

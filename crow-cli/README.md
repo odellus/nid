@@ -1,6 +1,6 @@
-# `crow-acp`
+# `crow-cli`
 
-`crow-acp` is an [Agent Client Protocol (ACP)](https://agentclientprotocol.com/) native agent implementation that serves as the core execution engine for the Crow agent framework.
+`crow-cli` is an [Agent Client Protocol (ACP)](https://agentclientprotocol.com/) native agent implementation that serves as the core execution engine for the Crow agent framework.
 
 ## Installation
 
@@ -24,7 +24,7 @@ uv sync
 source /home/thomas/src/nid/crow-acp/.venv/bin/activate
 
 # Run the agent
-crow-acp
+crow-cli --help
 ```
 
 ### Run Programmatically
