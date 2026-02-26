@@ -107,7 +107,7 @@ class Session:
         self.db.add(db_msg)
         self.db.commit()
 
-    def add_assistant_response(
+    def add_react_response(
         self,
         thinking: list[str],
         content: list[str],

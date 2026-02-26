@@ -353,20 +353,28 @@ async def react_loop(
 
         except asyncio.CancelledError:
             logger.info("React loop cancelled mid-stream")
-            session.add_assistant_response(
-                state_accumulator["thinking"],
-                state_accumulator["content"],
-                state_accumulator["tool_call_inputs"],
-                [],
-                usage,
-            )
+
+            # CHECK THAT THESE FORM A VALID RESPONSE AND ARE NOT EMPTY
+            if (
+                "content" in state_accumulator
+                or "tool_call_inputs" in state_accumulator
+            ):
+                session.add_react_response(
+                    state_accumulator["thinking"],
+                    state_accumulator["content"],
+                    state_accumulator["tool_call_inputs"],
+                    [],
+                    usage,
+                )
             raise
 
         if cancel_event and cancel_event.is_set():
             logger.info("Cancelled before tool execution")
-            session.add_assistant_response(
-                thinking, content, tool_call_inputs, [], usage
-            )
+            # CHECK THAT THESE FORM A VALID RESPONSE AND ARE NOT EMPTY
+            if len(content) > or len(tool_call_inputs) > 0:
+                session.add_react_response(
+                    thinking, content, tool_call_inputs, [], usage
+                )
             return
 
         ################################################
@@ -399,8 +407,8 @@ async def react_loop(
             logger.info("Compaction complete - session updated in-place.")
 
         # This ends the react loop
-        if not tool_call_inputs:
-            session.add_assistant_response(thinking, content, [], [], usage)
+        if not tool_call_inputs and len(content) > 0:
+            session.add_react_response(thinking, content, [], [], usage)
             logger.info(f"Final React Turn Usage: {usage}")
             yield {"type": "final_history", "messages": session.messages}
             # I guess we need to check context length here too?
@@ -426,7 +434,8 @@ async def react_loop(
         )
         if cancel_event and cancel_event.is_set():
             logger.info("Cancelled after tool execution")
-            session.add_assistant_response(
+            if len(tool_results) > 0:
+                session.add_react_response(
                 thinking, content, tool_call_inputs, tool_results, usage
             )
             return
@@ -434,7 +443,7 @@ async def react_loop(
         #####################################
         #
         #####################################
-
-        session.add_assistant_response(
+        # CANCEL EVENT NOT SET
+        session.add_react_response(
             thinking, content, tool_call_inputs, tool_results, usage
         )

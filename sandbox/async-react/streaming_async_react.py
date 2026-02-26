@@ -224,18 +224,19 @@ async def main():
     async with mcp_client:
         tools = await get_tools(mcp_client)
         async for chunk in react_loop(messages, mcp_client, lm, "qwen3.5-plus", tools):
-            if chunk["type"] == "content":
-                print(chunk["token"], end="", flush=True)
-            elif chunk["type"] == "thinking":
-                print(chunk["token"], end="", flush=True)
-            elif chunk["type"] == "tool_call":
-                name, first_arg = chunk["token"]
-                print(f"TOOL CHUNK: {chunk}")
-                print(f"\n[Tool Call]: {name}({first_arg}", end="", flush=True)
-            elif chunk["type"] == "tool_args":
-                print(chunk["token"], end="", flush=True)
-            elif chunk["type"] == "final_history":
-                final_history = chunk["messages"]
+            print(chunk)
+            # if chunk["type"] == "content":
+            #     print(chunk["token"], end="", flush=True)
+            # elif chunk["type"] == "thinking":
+            #     print(chunk["token"], end="", flush=True)
+            # elif chunk["type"] == "tool_call":
+            #     name, first_arg = chunk["token"]
+            #     print(f"TOOL CHUNK: {chunk}")
+            #     print(f"\n[Tool Call]: {name}({first_arg}", end="", flush=True)
+            # elif chunk["type"] == "tool_args":
+            #     print(chunk["token"], end="", flush=True)
+            # elif chunk["type"] == "final_history":
+            #     final_history = chunk["messages"]
     return final_history
 
 

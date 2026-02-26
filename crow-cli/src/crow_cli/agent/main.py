@@ -435,13 +435,11 @@ class AcpAgent(Agent):
             # Build user message content (supports text, images, and resource links)
             user_content = []
             for block in prompt:
-                self._logger.info(f"block type: {type(block)}")
                 _type = (
                     block.get("type", "")
                     if isinstance(block, dict)
                     else getattr(block, "type", "")
                 )
-                self._logger.info(f"block type: {_type}")
                 if _type == "text":
                     text = (
                         block.get("text", "")
@@ -460,8 +458,6 @@ class AcpAgent(Agent):
                         if isinstance(resource, dict)
                         else getattr(resource, "text", "")
                     )
-                    # self._logger.info(f"resource: {resource}")
-                    # self._logger.info(f"text: {text}")
                     user_content.append({"type": "text", "text": text})
                 elif _type == "image":
                     # Handle ACP image content block
