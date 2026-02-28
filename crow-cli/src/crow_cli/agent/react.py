@@ -88,7 +88,7 @@ async def send_request(
                             normalized_blocks.append(block)
                     normalized_msg["content"] = normalized_blocks
                 normalized_messages.append(normalized_msg)
-            
+
             return await llm.chat.completions.create(
                 model=session.model_identifier,
                 messages=normalized_messages,
@@ -139,48 +139,6 @@ async def send_request(
 
     # Should not reach here, but just in case
     raise last_exception
-
-
-# from fastmcp import Client as MCPClient
-# from openai import AsyncOpenAI
-
-# from crow_cli.agent.compact import compact
-# from crow_cli.agent.configure import Config
-# from crow_cli.agent.context import maximal_deserialize
-# from crow_cli.agent.session import Session
-# from crow_cli.agent.tools import (
-#     execute_acp_edit,
-#     execute_acp_read,
-#     execute_acp_terminal,
-#     execute_acp_tool,
-#     execute_acp_write,
-# )
-
-
-# async def send_request(
-#     llm: AsyncOpenAI,
-#     session: Session,
-#     tools: list[dict],
-# ):
-#     """
-#     Send request to LLM.
-
-#     Args:
-#         llm: The async OpenAI client.
-#         session: The current session containing messages and model identifier.
-#         tools: List of tool definitions.
-
-#     Returns:
-#         Streaming response from LLM
-#     """
-#     return await llm.chat.completions.create(
-#         model=session.model_identifier,
-#         messages=session.messages,
-#         tools=tools,
-#         stream=True,
-#         max_tokens=8192,
-#         parallel_tool_calls=True,
-#     )
 
 
 def process_chunk(

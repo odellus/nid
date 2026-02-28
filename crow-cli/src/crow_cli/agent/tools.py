@@ -4,43 +4,18 @@ from logging import Logger
 from typing import Any
 
 from acp import (
-    PROTOCOL_VERSION,
-    Agent,
-    AuthenticateResponse,
-    InitializeResponse,
-    LoadSessionResponse,
-    NewSessionResponse,
-    PromptResponse,
-    SetSessionModeResponse,
-    run_agent,
     text_block,
-    update_agent_message,
-    update_agent_thought,
 )
 from acp.helpers import (
-    ToolCallContentVariant,
     start_edit_tool_call,
     start_read_tool_call,
-    text_block,
     tool_content,
     tool_diff_content,
     update_tool_call,
 )
 from acp.interfaces import Client
 from acp.schema import (
-    AgentCapabilities,
-    AgentMessageChunk,
-    AudioContentBlock,
-    ClientCapabilities,
-    EmbeddedResourceContentBlock,
-    HttpMcpServer,
-    ImageContentBlock,
-    Implementation,
-    McpServerStdio,
-    ResourceContentBlock,
-    SseMcpServer,
     TerminalToolCallContent,
-    TextContentBlock,
     ToolCallProgress,
     ToolCallStart,
     ToolKind,
