@@ -66,9 +66,32 @@ async def send_request(
 
     for attempt in range(max_retries):
         try:
+            # Normalize messages - handle both list format (multimodal) and string format
+            normalized_messages = []
+            for msg in session.messages:
+                normalized_msg = dict(msg)
+                content = msg.get("content")
+                # If content is a list of content blocks, keep it as-is (for multimodal)
+                # But if it's a list with only text blocks and they're in the wrong format, fix it
+                if isinstance(content, list):
+                    # Check if this is already in the correct OpenAI format
+                    # (e.g., [{"type": "text", "text": "..."}] or [{"type": "image_url", ...}])
+                    # If the blocks have "text" keys, they're already in correct format
+                    # If they're just strings, we need to convert them
+                    normalized_blocks = []
+                    for block in content:
+                        if isinstance(block, str):
+                            # Old format: just a string
+                            normalized_blocks.append({"type": "text", "text": block})
+                        elif isinstance(block, dict):
+                            # Already in correct format, keep as-is
+                            normalized_blocks.append(block)
+                    normalized_msg["content"] = normalized_blocks
+                normalized_messages.append(normalized_msg)
+            
             return await llm.chat.completions.create(
                 model=session.model_identifier,
-                messages=session.messages,
+                messages=normalized_messages,
                 tools=tools,
                 stream=True,
                 max_tokens=8192,

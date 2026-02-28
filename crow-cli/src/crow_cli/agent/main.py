@@ -321,16 +321,22 @@ class AcpAgent(Agent):
         **kwargs: Any,
     ) -> LoadSessionResponse | None:
         """Load an existing session with proper resource management."""
-        self._session_logger.info("Loading session: %s", session_id)
+        self._logger.info("LOAD_SESSION: Loading session: %s", session_id)
 
         try:
             # Load session from database
+            self._logger.info("LOAD_SESSION: Step 1: Loading session from DB")
             session = Session.load(session_id, db_uri=self._db_uri)
+            self._logger.info("LOAD_SESSION: Step 1 complete: Session loaded from DB")
 
             # Setup MCP client (same as new_session)
-            # Use default config if no servers provided
+            # Use default config if no servers given
+            self._logger.info("LOAD_SESSION: Step 2: Getting fallback config")
             fallback_config = self._config.get_builtin_mcp_config()
+            self._logger.info("LOAD_SESSION: Step 2 complete: fallback_config = %s", fallback_config)
+            
             if fallback_config:
+                self._logger.info("LOAD_SESSION: Step 3: Creating MCP client with fallback config")
                 mcp_client = create_mcp_client_from_acp(
                     mcp_servers=mcp_servers,
                     cwd=cwd,
@@ -344,9 +350,12 @@ class AcpAgent(Agent):
                     fallback_config=[],
                     logger=self._logger,
                 )
+            self._logger.info("LOAD_SESSION: Step 3 complete: MCP client created")
 
             # CRITICAL: Use AsyncExitStack for lifecycle management
+            self._logger.info("LOAD_SESSION: Step 4: Entering async context")
             mcp_client = await self._exit_stack.enter_async_context(mcp_client)
+            self._logger.info("LOAD_SESSION: Step 4 complete: MCP client context entered")
 
             # Get tools
             tools = await get_tools(mcp_client)
