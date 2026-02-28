@@ -1,99 +1,353 @@
 """
-Stupid simple ACP Agent-Client router.
+Agent-Client: ACP bridge between upstream client and downstream agent.
 
-Usage:
-    uv --project /home/thomas/src/nid/sandbox/agent-client run python agent_client.py
+Architecture:
+    Upstream (Zed) ↔ stdio ↔ AgentClient ↔ WebSocket ↔ Bridge ↔ Child Agent (stdio)
+
+The agent-client:
+1. Implements ACP Agent interface (for upstream)
+2. Spawns child agent + bridge on initialization
+3. Connects to bridge via WebSocket
+4. Forwards all ACP calls bidirectionally
 """
 
 import asyncio
-import sys
-from uuid import uuid4
+import json
+import logging
+from pathlib import Path
+from typing import Any
 
-from acp import run_agent, text_block
-from acp.interfaces import Agent, Client
+import websockets
+from acp import (
+    Agent,
+    InitializeResponse,
+    NewSessionResponse,
+    PromptResponse,
+    run_agent,
+)
+from acp.interfaces import Client
 from acp.schema import (
+    AudioContentBlock,
     ClientCapabilities,
+    EmbeddedResourceContentBlock,
+    HttpMcpServer,
+    ImageContentBlock,
     Implementation,
     McpServerStdio,
+    ResourceContentBlock,
+    SseMcpServer,
     TextContentBlock,
 )
 
+# Log to file, NOT stdio (stdio is for ACP protocol!)
+log_file = Path(__file__).parent / "agent_client.log"
+logging.basicConfig(
+    filename=str(log_file),
+    level=logging.DEBUG,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
 
-class SimpleAgentClient(Agent):
+
+class AgentClient(Agent):
     """
-    Stupid simple router: Agent to CLI, Client to backend.
+    ACP agent that forwards to child agent via WebSocket.
 
-    Routes all prompts to a backend agent and returns the response.
+    Flow:
+        Zed → AgentClient (stdio) → WebSocket → Bridge → Child Agent
     """
 
-    _backend_conn: Client | None = None
-    _backend_session_map: dict[str, str] = {}  # client_session → backend_session
+    def __init__(self):
+        """Initialize the agent-client."""
+        self._conn: Client | None = None  # Upstream connection (Zed)
+        self._ws: websockets.WebSocketClientProtocol | None = None
+        self._ws_port: int = 8765
+        self._request_id: int = 0
+        self._pending_requests: dict[int, asyncio.Future] = {}
+        self._bridge_process: asyncio.subprocess.Process | None = None
+        self._update_task: asyncio.Task | None = None
+
+        logger.info("AgentClient initialized")
+
+    def on_connect(self, conn: Client) -> None:
+        """Called when upstream client (Zed) connects."""
+        self._conn = conn
+        logger.info("Upstream client connected")
 
     async def initialize(
         self,
         protocol_version: int,
         client_capabilities: ClientCapabilities | None = None,
         client_info: Implementation | None = None,
-        **kwargs,
-    ):
-        return {"protocol_version": protocol_version}
+        **kwargs: Any,
+    ) -> InitializeResponse:
+        try:
+            logger.info("AgentClient.initialize() called")
+            logger.info(f"  protocol_version: {protocol_version}")
+            logger.info(f"  client_capabilities: {client_capabilities}")
+            logger.info(f"  client_info: {client_info}")
+            
+            # Spawn child agent + bridge
+            await self._spawn_child()
+            
+            # Connect to bridge via WebSocket
+            await self._connect_to_bridge()
+            
+            # Forward initialize to child agent
+            logger.info("Forwarding initialize to child agent...")
+            response = await self._send_request("initialize", {
+                "protocolVersion": protocol_version,
+                "clientCapabilities": client_capabilities or {},
+                "clientInfo": client_info,
+            })
+            
+            logger.info(f"Child agent initialized: {response}")
+            
+            # Extract protocol version from response
+            child_protocol_version = response.get("result", {}).get("protocolVersion", protocol_version)
+            
+            logger.info(f"Returning InitializeResponse with protocol_version={child_protocol_version}")
+            return InitializeResponse(protocol_version=child_protocol_version)
+        
+        except Exception as e:
+            logger.error(f"Error in initialize: {e}", exc_info=True)
+            raise
 
     async def new_session(
         self,
         cwd: str,
-        mcp_servers: list[McpServerStdio] | None = None,
-        **kwargs,
-    ):
-        session_id = uuid4().hex
+        mcp_servers: list[HttpMcpServer | SseMcpServer | McpServerStdio],
+        **kwargs: Any,
+    ) -> NewSessionResponse:
+        logger.info(f"AgentClient.new_session(cwd={cwd})")
 
-        # Connect to backend agent (EchoAgent for demo)
-        if self._backend_conn is None:
-            backend_cwd = "/home/thomas/src/nid/sandbox/crow-acp-learning"
-            backend_script = f"{backend_cwd}/echo_agent.py"
+        # Forward to child agent
+        response = await self._send_request(
+            "session/new",
+            {
+                "cwd": cwd,
+                "mcpServers": mcp_servers,
+            },
+        )
 
-            # We'll handle this via the client connection
-            # For now, just create the session mapping
-            backend_session_id = uuid4().hex
-            self._backend_session_map[session_id] = backend_session_id
+        logger.info(f"Child session created: {response}")
 
-        return {"session_id": session_id}
+        # Extract session ID from response
+        session_id = response.get("result", {}).get("sessionId")
+        if not session_id:
+            raise RuntimeError("Child agent did not return sessionId")
+
+        return NewSessionResponse(session_id=session_id)
 
     async def prompt(
         self,
-        prompt: list[TextContentBlock],
+        prompt: list[
+            TextContentBlock
+            | ImageContentBlock
+            | AudioContentBlock
+            | ResourceContentBlock
+            | EmbeddedResourceContentBlock
+        ],
         session_id: str,
-        **kwargs,
-    ):
-        backend_session_id = self._backend_session_map.get(session_id)
-        if not backend_session_id:
-            raise ValueError(f"Session {session_id} not found")
+        **kwargs: Any,
+    ) -> PromptResponse:
+        try:
+            logger.info(f"AgentClient.prompt(session_id={session_id})")
+            logger.info(f"  prompt: {prompt}")
+            
+            # Forward to child agent
+            logger.info("Forwarding prompt to child agent...")
+            response = await self._send_request("session/prompt", {
+                "sessionId": session_id,
+                "prompt": prompt,
+            })
+            
+            logger.info(f"Child prompt complete: {response}")
+            
+            # Extract stop reason from response
+            stop_reason = response.get("result", {}).get("stopReason", "end_turn")
+            
+            logger.info(f"Returning PromptResponse with stop_reason={stop_reason}")
+            return PromptResponse(stop_reason=stop_reason)
+        
+        except Exception as e:
+            logger.error(f"Error in prompt: {e}", exc_info=True)
+            raise
 
-        # For demo: just echo back the prompt
-        text_content = []
-        for block in prompt:
-            if isinstance(block, dict):
-                if block.get("type") == "text":
-                    text_content.append(block.get("text", ""))
-            elif hasattr(block, "type") and block.type == "text":
-                text_content.append(getattr(block, "text", ""))
+    async def cancel(self, session_id: str, **kwargs: Any) -> None:
+        """Handle cancellation request from upstream."""
+        logger.info(f"AgentClient.cancel(session_id={session_id})")
 
-        return {
-            "stop_reason": "end_turn",
-            "content": [
+        # Forward cancellation to child agent
+        try:
+            await self._send_notification(
+                "session/cancel",
                 {
-                    "type": "text",
-                    "text": f"Router received: {' '.join(text_content)}",
-                }
-            ],
+                    "sessionId": session_id,
+                },
+            )
+            logger.info("Cancellation forwarded to child agent")
+        except Exception as e:
+            logger.error(f"Error forwarding cancellation: {e}")
+
+    async def _spawn_child(self):
+        """Spawn child agent with stdio-to-ws bridge."""
+        logger.info("Spawning child agent...")
+
+        here = Path(__file__).parent
+        stdio_to_ws = here / "stdio_to_ws.py"
+        echo_agent = here / "echo_agent.py"
+
+        logger.info(f"  bridge: {stdio_to_ws}")
+        logger.info(f"  child: {echo_agent}")
+
+        # Spawn bridge (which spawns child agent)
+        self._bridge_process = await asyncio.create_subprocess_exec(
+            "uv",
+            "--project",
+            str(here),
+            "run",
+            str(stdio_to_ws),
+            "--port",
+            str(self._ws_port),
+            "uv",
+            "--project",
+            str(here),
+            "run",
+            str(echo_agent),
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=str(here),
+        )
+
+        logger.info(f"Bridge spawned (PID: {self._bridge_process.pid})")
+
+    async def _connect_to_bridge(self):
+        """Connect to the WebSocket server with retries."""
+        logger.info(f"Connecting to WebSocket on port {self._ws_port}...")
+
+        max_retries = 10
+        retry_delay = 0.5
+
+        for attempt in range(max_retries):
+            try:
+                self._ws = await websockets.connect(f"ws://localhost:{self._ws_port}")
+
+                # Start task to handle incoming updates
+                self._update_task = asyncio.create_task(self._handle_updates())
+
+                logger.info("WebSocket connected")
+                return
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    logger.debug(
+                        f"Connection attempt {attempt + 1} failed, retrying..."
+                    )
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 1.5
+                else:
+                    logger.error(f"Failed to connect after {max_retries} attempts: {e}")
+                    raise RuntimeError(f"Failed to connect to bridge: {e}")
+
+    async def _handle_updates(self):
+        """Handle incoming WebSocket messages (session/update notifications)."""
+        try:
+            async for message in self._ws:
+                data = json.loads(message)
+
+                # Check if this is a response to a request
+                if "id" in data:
+                    request_id = data["id"]
+                    if request_id in self._pending_requests:
+                        # This is a response to our request
+                        future = self._pending_requests.pop(request_id)
+                        future.set_result(data)
+
+                # Check if this is a notification from child agent
+                elif "method" in data and data["method"] == "session/update":
+                    # Forward to upstream client
+                    logger.info("Forwarding session/update to upstream")
+                    params = data.get("params", {})
+                    await self._conn.session_update(
+                        session_id=params.get("sessionId"),
+                        update=params.get("update"),
+                    )
+
+                else:
+                    logger.warning(f"Unknown message type: {data}")
+
+        except websockets.exceptions.ConnectionClosed:
+            logger.info("WebSocket connection closed")
+        except Exception as e:
+            logger.error(f"Error handling updates: {e}", exc_info=True)
+
+    async def _send_request(self, method: str, params: dict) -> dict:
+        """Send JSON-RPC request to child agent and wait for response."""
+        self._request_id += 1
+        request_id = self._request_id
+        
+        # Serialize params recursively
+        serialized_params = self._serialize_value(params)
+        
+        request = {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": method,
+            "params": serialized_params,
         }
+        
+        # Create future to wait for response
+        future = asyncio.get_event_loop().create_future()
+        self._pending_requests[request_id] = future
+        
+        # Send request
+        await self._ws.send(json.dumps(request))
+        logger.info(f"Sent request {request_id}: {method}")
+        
+        # Wait for response
+        response = await future
+        logger.info(f"Received response {request_id}")
+        
+        if "error" in response:
+            raise RuntimeError(f"Request failed: {response['error']}")
+        
+        return response
+    
+    def _serialize_value(self, value: Any) -> Any:
+        """Recursively serialize a value (Pydantic models → dicts)."""
+        if hasattr(value, 'model_dump'):
+            # Pydantic model
+            return value.model_dump(exclude_none=True)
+        elif isinstance(value, dict):
+            # Dict - recursively serialize values
+            return {k: self._serialize_value(v) for k, v in value.items()}
+        elif isinstance(value, (list, tuple)):
+            # List/tuple - recursively serialize items
+            return [self._serialize_value(item) for item in value]
+        else:
+            # Primitive value (str, int, float, bool, None)
+            return value
 
-    async def cancel(self, session_id: str, **kwargs):
-        pass
+    async def _send_notification(self, method: str, params: dict) -> None:
+        """Send JSON-RPC notification to child agent (no response expected)."""
+        # Serialize params recursively
+        serialized_params = self._serialize_value(params)
+        
+        notification = {
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": serialized_params,
+        }
+        
+        await self._ws.send(json.dumps(notification))
+        logger.info(f"Sent notification: {method}")
 
 
-async def main():
-    agent = SimpleAgentClient()
-    await run_agent(agent)
+async def main() -> None:
+    """Run the agent-client."""
+    logger.info("Starting AgentClient")
+    await run_agent(AgentClient())
 
 
 if __name__ == "__main__":
