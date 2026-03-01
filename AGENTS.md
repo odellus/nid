@@ -10,7 +10,4 @@
 
 - ALWAYS USE `uv --project /path/to/project run /path/to/script.py` 
 - NEVER USE `uv run /path/to/script.py` 
-- ALWAYS USE  `uv --project /path/to/project run /path/to/script.py` 
-
-
-# crow wuz here
+- ALWAYS USE  `uv --project /path/to/project run /path/to/script.py`

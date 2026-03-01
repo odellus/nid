@@ -6,6 +6,38 @@
 - slash commands <- TODO
 - compaction, compaction, compaction <- IN VALIDATION
 - skills, skills, skills <- TO DO
+- LOOKS LIKE HOOKS ARE BACK ON THE MENU BOYS!!
+```python
+import re
+
+def validate_strict_terminal_rules(command: str) -> str | None:
+    """
+    Validates a terminal command against strict execution rules.
+    Returns an error message string if validation fails, or None if it passes.
+    """
+    # Rule 1: Ban raw 'python' usage.
+    # Catches 'python script.py', 'uv run python', or 'cd dir && python script.py'
+    if re.search(r'(^|[\s&|;])python(\s|$)', command):
+        return (
+            "ERROR: Raw 'python' usage is strictly banned. "
+            "You must execute scripts directly using the explicit uv project runner: "
+            "`uv --project /absolute/path/to/project run /absolute/path/to/script.py`"
+        )
+    
+    # Rule 2: Enforce 'uv --project'
+    # Catches 'uv run' or 'uv add' that isn't immediately followed by '--project'
+    if re.search(r'(^|[\s&|;])uv\s+(?!--project\b)', command):
+        return (
+            "ERROR: Looks like you tried to call uv without a --project flag. "
+            "SUPER IMPORTANT RULE: ALWAYS USE `uv --project /absolute/path/to/project run ...`"
+        )
+    
+    # Rule 3: The "Agents don't touch Git" rule
+    if re.search(r'(^|[\s&|;])git(\s|$)', command):
+        return "ERROR: Git operations are strictly prohibited. Do not touch version control."
+
+    return None  # Command is clean
+```
 
 # CODE IMPROVEMENTS
 - unit testing <- IN PROGRESS
@@ -13,6 +45,7 @@
 - end to end testing <- DONE
 - evaluate cancel task vs cancel event to determine which we want to keep and which one we should remove, though tbh it works extremely well right now, I'm not certain this is necessarily suboptimal. maybe overengineered
 - remove dead code
+- add image support through RustFS
 
 # BUG FIXES
 - adding a folder causes ACP to crash

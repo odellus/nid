@@ -24,6 +24,12 @@ dependencies = [
 ]
 
 
+[project.urls]
+Homepage = "https://github.com/odellus/crow-cli"
+Repository = "https://github.com/odellus/crow-cli"
+Issues = "https://github.com/odellus/crow-cli/issues"
+Documentation = "https://github.com/odellus/crow-cli#readme"
+
 [project.scripts]
 crow-cli = "crow_cli.cli.main:main"
 
