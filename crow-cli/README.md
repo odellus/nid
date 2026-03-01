@@ -6,21 +6,34 @@
 
 ```bash
 # Ensure you're in the correct project directory
-cd /home/thomas/src/nid
+git clone https://github.com/odellus/crow-cli.git
 uv venv
 # Install dependencies using uv
 uv --project /path/to/crow/crow-cli sync
 ```
 
+
+Or run directly
+```
+uvx crow-cli --help
+```
+
+if you like having it available globally, you can install it using pip
+```
+uv tool install crow-cli --python 3.14
+```
+
+
+```
+```
+
+
 ## Quick Start
 
-### Run as CLI Agent
-
-```bash
-# Activate the virtual environment (if not using --project)
-# Run the agent
-uv --project . crow-cli --help
 ```
+uvx crow-cli init
+```
+
 
 ### Run Programmatically
 
@@ -37,42 +50,6 @@ if __name__ == "__main__":
 
 ## Configuration
 
-### Environment Variables
-
-Create a `.env` file in your project root or set these environment variables:
-
-```bash
-# LLM Configuration
-ZAI_API_KEY=your-api-key-here
-ZAI_BASE_URL=https://api.zai.ai
-
-# Database path (optional, defaults to ~/.crow/crow.db)
-DATABASE_PATH=sqlite:~/.crow/crow.db
-```
-
-### MCP Server Configuration
-
-MCP servers are configured in `~/.crow/mcp.json`. The default configuration includes the built-in Crow MCP tools:
-
-```json
-{
-  "mcpServers": {
-    "crow-mcp": {
-      "command": "uv",
-      "args": [
-        "--project",
-        "/home/thomas/src/nid/crow-mcp",
-        "run",
-        "python",
-        "-m",
-        "crow_mcp.server",
-        "--transport",
-        "stdio"
-      ]
-    }
-  }
-}
-```
 
 ## Features
 
@@ -81,27 +58,22 @@ MCP servers are configured in `~/.crow/mcp.json`. The default configuration incl
 - Full streaming support for token-by-token responses
 - Session persistence to SQLite database
 
-### 2. Multi-Session Support
-- Handles multiple concurrent sessions with proper isolation
-- Sessions persist across agent restarts
-- Load existing sessions by ID
-
-### 3. MCP Tool Integration
+### 2. MCP Tool Integration
 - Automatically discovers tools from connected MCP servers
 - Supports both MCP and ACP-native tool execution
 - Tool execution with progress updates
 
-### 4. Streaming ReAct Loop
+### 3. Streaming ReAct Loop
 - Real-time streaming of thinking tokens (for reasoning models)
 - Content token streaming
 - Tool call progress updates (pending → in_progress → completed/failed)
 
-### 5. Cancellation Support
+### 4. Cancellation Support
 - Immediate task cancellation via async events
 - Persists partial state on cancellation
 - Safe resource cleanup on cancel
 
-### 6. ACP Terminal Support
+### 5. ACP Terminal Support
 When the ACP client supports terminals (`clientCapabilities.terminal: true`):
 - Uses ACP-native terminals instead of MCP terminal calls
 - Better terminal display in the client
@@ -147,9 +119,17 @@ Sessions are stored in SQLite with three main tables:
 
 `crow-cli` is designed to work with any ACP-compatible client:
 
-```bash
-# Example with ACP client that supports terminal and filesystem capabilities
-# The agent will automatically use ACP-native features when available
+```json
+// In Zed
+{
+  "agent_servers": {
+      "crow-cli": {
+        "type": "custom",
+        "command": "uvx",
+        "args": ["crow-cli", "acp"],
+      },
+...
+}
 ```
 
 ### ACP Client Capabilities
@@ -166,19 +146,59 @@ The agent automatically detects and uses client capabilities:
 
 ```
 crow-cli/
-├── agent.py          # AcpAgent class - ACP protocol + ReAct loop
-├── session.py        # Session management + persistence
-├── db.py             # SQLAlchemy database models
-├── config.py         # Configuration (LLM, MCP, database)
-├── llm.py            # LLM client configuration
-├── mcp_client.py     # MCP client creation + tool extraction
-├── context.py        # Context providers (directory tree, file fetching)
-├── prompts/          # Jinja2 system prompt templates
-│   ├── system_prompt.jinja2
-│   ├── self_documentation.jinja2
-│   ├── skill_knowledge_info.jinja2
-│   └── system_message_suffix.jinja2
-└── pyproject.toml    # Project dependencies and entry point
+├── src/crow_cli/
+│   ├── __init__.py
+│   ├── agent/
+│   │   ├── __init__.py
+│   │   ├── compact.py        # Conversation compaction
+│   │   ├── configure.py      # Agent configuration
+│   │   ├── context.py        # Context providers (directory tree, file fetching)
+│   │   ├── db.py             # SQLAlchemy database models
+│   │   ├── llm.py            # LLM client configuration
+│   │   ├── logger.py         # Logging utilities
+│   │   ├── main.py           # Agent entry point
+│   │   ├── mcp_client.py     # MCP client creation + tool extraction
+│   │   ├── prompt.py         # Prompt building
+│   │   ├── react.py          # ReAct loop implementation
+│   │   ├── session.py        # Session management + persistence
+│   │   ├── skills.py         # Skills handling
+│   │   ├── tools.py          # Tool definitions
+│   │   └── prompts/          # Jinja2 system prompt templates
+│   │       ├── system_prompt.jinja2
+│   │       ├── self_documentation.jinja2
+│   │       ├── skill_knowledge_info.jinja2
+│   │       └── system_message_suffix.jinja2
+│   ├── cli/
+│   │   ├── __init__.py
+│   │   ├── init_cmd.py       # `crow init` command
+│   │   └── main.py           # CLI entry point
+│   └── client/
+│       ├── __init__.py
+│       └── main.py           # Programmatic client
+├── config/
+│   ├── compose.yaml          # Docker compose for services
+│   ├── config.yaml           # Default configuration
+│   ├── .env.example          # Environment variables template
+│   ├── searxng/
+│   │   └── settings.yml      # SearXNG search config
+│   └── prompts/              # Override prompts (user customization)
+│       ├── system_prompt.jinja2
+│       ├── self_documentation.jinja2
+│       ├── skill_knowledge_info.jinja2
+│       └── system_message_suffix.jinja2
+├── tests/
+│   ├── __init__.py
+│   ├── conftest.py
+│   ├── test_agent_init.py
+│   └── unit/
+│       └── test_session.py
+├── examples/
+│   ├── mc_escher_loop.py
+│   └── quick_test.py
+├── pyproject.toml
+├── README.md
+├── TODO.md
+└── run_tests.sh
 ```
 
 ## Development
