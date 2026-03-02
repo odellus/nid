@@ -6,6 +6,7 @@ Builds config.yaml and .env in ~/.crow (or CROW_CONFIG_DIR).
 
 import getpass
 import os
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -284,6 +285,14 @@ def run_init():
 
     # Ensure directory exists
     config_dir.mkdir(parents=True, exist_ok=True)
+
+    # Copy system prompt template from repo config directory
+    repo_prompts = Path(__file__).parents[3] / "config" / "prompts"
+    dest_prompts = config_dir / "prompts"
+    dest_prompts.mkdir(parents=True, exist_ok=True)
+    for template_file in repo_prompts.glob("*.jinja2"):
+        shutil.copy2(template_file, dest_prompts / template_file.name)
+    console.print(f"[green]✓[/green] Copied prompt templates to {dest_prompts}")
 
     # Build config.yaml
     config_data: dict[str, Any] = {
