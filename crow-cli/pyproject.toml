@@ -57,3 +57,5 @@ addopts = "-v --strict-markers"
 
 [tool.setuptools.package-data]
 "*" = ["*.jinja2"]
+
+artifacts = ["config/"]
