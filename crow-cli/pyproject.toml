@@ -56,6 +56,4 @@ asyncio_default_fixture_loop_scope = "function"
 addopts = "-v --strict-markers"
 
 [tool.setuptools.package-data]
-"*" = ["*.jinja2"]
-
-artifacts = ["config/"]
+"*" = ["*.jinja2", "*.yaml", "*.yml", ".env.example"]
