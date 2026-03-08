@@ -44,6 +44,7 @@ packages = ["src/crow_cli"]
 dev = [
     "pytest>=9.0.2",
     "pytest-asyncio>=0.23.0",
+    "pyinstaller>=6.0.0",
 ]
 
 [tool.pytest.ini_options]

@@ -74,6 +74,7 @@ async def send_request(
                 stream=True,
                 max_tokens=max_tokens,
                 parallel_tool_calls=True,
+                stream_options={"include_usage": True},  # Get usage in final chunk
             )
         except APITimeoutError as e:
             last_exception = e
@@ -137,6 +138,10 @@ def process_chunk(
     Returns:
         Tuple of (thinking, content, tool_calls, new_token)
     """
+    # Final chunk may have usage but no choices
+    if not chunk.choices or len(chunk.choices) == 0:
+        return thinking, content, tool_calls, (None, None)
+    
     delta = chunk.choices[0].delta
     new_token = (None, None)
 
@@ -256,12 +261,14 @@ async def process_response(response, state_accumulator: dict):
         }
     )
     async for chunk in response:
-        if hasattr(chunk, "usage") and chunk.usage:
+        # Check for usage in chunk (litellm returns it in the final chunk with stream_options={"include_usage": True})
+        if hasattr(chunk, "usage") and chunk.usage is not None:
             final_usage = {
-                "prompt_tokens": chunk.usage.prompt_tokens,
-                "completion_tokens": chunk.usage.completion_tokens,
-                "total_tokens": chunk.usage.total_tokens,
+                "prompt_tokens": getattr(chunk.usage, "prompt_tokens", None),
+                "completion_tokens": getattr(chunk.usage, "completion_tokens", None),
+                "total_tokens": getattr(chunk.usage, "total_tokens", None),
             }
+        
         thinking, content, tool_calls, new_token = process_chunk(
             chunk, thinking, content, tool_calls
         )

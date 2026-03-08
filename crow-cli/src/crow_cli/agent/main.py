@@ -2,17 +2,38 @@
 ACP-native Agent.
 
 This is the single agent class that combines:
-- ACP protocol implementation (from CrowACPAgent)
+- ACP protocol implementation ( from CrowACPAgent)
 - Business logic (from old Agent)
 
 No wrapper, no nested agents - just one clean Agent(acp.Agent) implementation.
 """
 
+import sys
+import platform
+
+# Fix for PyInstaller + asyncio stdin on Linux
+# MUST be applied BEFORE any acp imports
+if getattr(sys, "frozen", False) and platform.system() == "Linux":
+    import asyncio
+    import acp.stdio as _acp_stdio
+    
+    async def _frozen_posix_stdio_streams(loop, limit=None):
+        """Use threaded stdin feeder for frozen builds on Linux."""
+        reader = asyncio.StreamReader(limit=limit) if limit is not None else asyncio.StreamReader()
+        _acp_stdio._start_stdin_feeder(loop, reader)
+        
+        write_protocol = _acp_stdio._WritePipeProtocol()
+        transport = _acp_stdio._StdoutTransport()
+        writer = asyncio.StreamWriter(transport, write_protocol, None, loop)
+        return reader, writer
+    
+    # Patch the function
+    _acp_stdio._posix_stdio_streams = _frozen_posix_stdio_streams
+
 import asyncio
 import base64
 import mimetypes
 import os
-import sys
 import uuid
 from contextlib import AsyncExitStack
 from pathlib import Path

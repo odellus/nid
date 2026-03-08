@@ -181,15 +181,31 @@ class CrowClient(Client):
 
     async def spawn_agent(self, cwd: str) -> asyncio.subprocess.Process:
         """Spawn the crow-acp agent subprocess."""
-        proc = await asyncio.create_subprocess_exec(
-            sys.executable,
-            "-m",
-            "crow_cli.agent.main",
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,  # Capture stderr for error reporting
-            cwd=cwd,
-        )
+        # Check if running in PyInstaller frozen build
+        is_frozen = getattr(sys, "frozen", False)
+        
+        if is_frozen:
+            # For frozen builds, use the 'acp' subcommand
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable,
+                "acp",
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=cwd,
+            )
+        else:
+            # Development mode - use -m to run the module
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable,
+                "-m",
+                "crow_cli.agent.main",
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=cwd,
+            )
+        
         if proc.stdin is None or proc.stdout is None:
             self._console.print("[red]Agent process does not expose stdio pipes[/red]")
             raise SystemExit(1)

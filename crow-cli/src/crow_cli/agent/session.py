@@ -139,12 +139,13 @@ class Session:
             )
         return self._model
 
-    def add_message(self, msg: dict):
+    def add_message(self, msg: dict, usage: dict | None = None):
         """
         Add message to in-memory list AND persist to database.
 
         Args:
             msg: Full message dict (role, content, tool_calls, etc.)
+            usage: Token usage dict with prompt_tokens, completion_tokens, total_tokens
         """
         self.messages.append(msg)
 
@@ -153,6 +154,9 @@ class Session:
             session_id=self.session_id,
             data=msg,
             role=msg.get("role", "unknown"),
+            prompt_tokens=usage.get("prompt_tokens") if usage else None,
+            completion_tokens=usage.get("completion_tokens") if usage else None,
+            total_tokens=usage.get("total_tokens") if usage else None,
         )
         self.db.add(db_msg)
         self.db.commit()
@@ -181,8 +185,8 @@ class Session:
             thinking: List of thinking tokens
             content: List of content tokens
             tool_call_inputs: Tool calls from assistant
-            tool_results: Results from tool execution
-            usage: Token usage dict
+            logger: Logger instance
+            usage: Token usage dict with prompt_tokens, completion_tokens, total_tokens
         """
         # Build react message
         # if it's just thinking tokens don't add that shit
@@ -196,8 +200,9 @@ class Session:
                 msg["tool_calls"] = tool_call_inputs
 
             logger.info(f"Adding message: {msg}")
+            logger.info(f"Message usage: {usage}")
             # Add to database/list
-            self.add_message(msg)
+            self.add_message(msg, usage)
 
     def _save_messages(self, messages: list[dict]):
         """Batch save messages to database."""

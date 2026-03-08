@@ -19,3 +19,4 @@
 ## CRITICAL
 The --project flag is REQUIRED for both running scripts AND installing dependencies.
 Missing this flag is a critical error.
+NEVER IMPORT ANYWHERE BUT THE TOP OF THE FILE
