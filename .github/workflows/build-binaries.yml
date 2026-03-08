@@ -11,9 +11,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-13, macos-latest, windows-latest]
+        os: [ubuntu-22.04, macos-13, macos-latest, windows-latest]
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             target: linux-x86_64
             archive_name: crow-cli-linux-x86_64.tar.gz
           - os: macos-13
@@ -43,7 +43,7 @@ jobs:
       - name: Install dependencies
         working-directory: ./crow-cli
         run: |
-          uv pip install pyinstaller
+          uv pip install --system pyinstaller
 
       - name: Build with PyInstaller
         working-directory: ./crow-cli

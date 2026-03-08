@@ -2,6 +2,16 @@
 
 `crow-cli` is an [Agent Client Protocol (ACP)](https://agentclientprotocol.com/) native agent implementation that serves as the core execution engine for the Crow agent framework.
 
+## System Requirements
+
+| Platform | Requirements |
+|----------|-------------|
+| **Linux** | glibc 2.35+ (Ubuntu 22.04+, Debian 12+, or equivalent) |
+| **macOS** | macOS 13+ (Ventura) - Intel & Apple Silicon |
+| **Windows** | Windows 10+ (64-bit) |
+
+**Note:** Linux binaries are built on Ubuntu 22.04 for maximum compatibility. If you're on an older distribution (Ubuntu 20.04, Debian 11, etc.), you'll need to build from source.
+
 ## Installation
 
 ```bash
