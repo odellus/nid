@@ -1,4 +1,5 @@
 import asyncio
+import json
 from asyncio import Event
 from typing import Any
 
@@ -178,7 +179,7 @@ def process_chunk(
     return thinking, content, tool_calls, new_token
 
 
-def process_tool_call_inputs(tool_calls: dict) -> list[dict]:
+def process_tool_call_inputs(tool_calls: dict) -> tuple[list[dict], list[bool]]:
     """
     Process tool call inputs into OpenAI format.
 
@@ -186,22 +187,48 @@ def process_tool_call_inputs(tool_calls: dict) -> list[dict]:
         tool_calls: Dictionary of tool calls keyed by index
 
     Returns:
-        List of tool call objects in OpenAI format
+        Tuple of (list of tool call objects, list of booleans indicating if each was repaired)
     """
     tool_call_inputs = []
+    repaired_flags = []
     # tool_calls is now a dict keyed by the integer index from the stream
     for index, tool_call in sorted(tool_calls.items()):
+        arguments_str = "".join(tool_call["arguments"])
+        was_repaired = False
+        
+        # Validate and repair JSON if needed
+        # This is critical because some models (like qwen3.5-plus) may produce
+        # malformed JSON that will cause API errors when sent back
+        try:
+            json.loads(arguments_str)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            # JSON is invalid, try to repair common issues
+            # or default to empty object
+            was_repaired = True
+            try:
+                # Try adding closing braces/brackets if missing
+                if arguments_str.count('{') > arguments_str.count('}'):
+                    arguments_str = arguments_str + '}' * (arguments_str.count('{') - arguments_str.count('}'))
+                if arguments_str.count('[') > arguments_str.count(']'):
+                    arguments_str = arguments_str + ']' * (arguments_str.count('[') - arguments_str.count(']'))
+                # Validate again after repair attempt
+                json.loads(arguments_str)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                # Still invalid, use empty object as fallback
+                arguments_str = "{}"
+        
         tool_call_inputs.append(
             dict(
                 id=tool_call["id"],
                 type="function",
                 function=dict(
                     name=tool_call["function_name"],
-                    arguments="".join(tool_call["arguments"]),
+                    arguments=arguments_str,
                 ),
             )
         )
-    return tool_call_inputs
+        repaired_flags.append(was_repaired)
+    return tool_call_inputs, repaired_flags
 
 
 async def process_response(response, state_accumulator: dict):
@@ -246,7 +273,9 @@ async def process_response(response, state_accumulator: dict):
             yield msg_type, token
 
     # Yield final result as a special chunk
-    yield "final", (thinking, content, process_tool_call_inputs(tool_calls), final_usage)
+    thinking, content, tool_calls = state_accumulator["thinking"], state_accumulator["content"], state_accumulator["tool_calls"]
+    tool_call_inputs, _ = process_tool_call_inputs(tool_calls)
+    yield "final", (thinking, content, tool_call_inputs, final_usage)
 
 
 async def execute_tool_calls(
@@ -436,11 +465,25 @@ async def react_loop(
         except asyncio.CancelledError:
             logger.info("React loop cancelled mid-stream")
 
-            tool_call_inputs = process_tool_call_inputs(state_accumulator["tool_calls"])
+            # CRITICAL: NEVER persist tool calls on cancellation
+            # Whether tool calls are complete or incomplete, we MUST NOT persist them because:
+            # 1. We're about to raise without executing the tools
+            # 2. This means no tool responses will be added to history
+            # 3. Next API call will fail: "An assistant message with tool_calls must be 
+            #    followed by tool messages responding to each tool_call_id"
+            #
+            # Even if the LLM finished streaming complete tool calls with valid JSON,
+            # we cannot persist them because we never executed the tools.
+            
+            logger.info(
+                "Cancellation occurred - not persisting tool calls to history "
+                "to avoid breaking conversation (no tool responses would exist)"
+            )
+            # Don't persist tool calls - just persist thinking/content if any
             session.add_assistant_response(
                 state_accumulator["thinking"],
                 state_accumulator["content"],
-                tool_call_inputs,
+                [],  # Empty tool calls - NEVER persist on cancellation
                 logger,
                 usage,
             )
